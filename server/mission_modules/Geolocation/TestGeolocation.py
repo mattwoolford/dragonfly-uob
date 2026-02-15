@@ -3,7 +3,7 @@ import unittest
 from server.mission_modules.Geolocation.Geolocation import Geolocation
 
 
-class TestSearch(unittest.TestCase):
+class TestGeolocation(unittest.TestCase):
 
     """
     Create your tests here
