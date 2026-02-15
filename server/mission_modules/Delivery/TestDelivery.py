@@ -3,7 +3,7 @@ import unittest
 from server.mission_modules.Delivery.Delivery import Delivery
 
 
-class TestSearch(unittest.TestCase):
+class TestDelivery(unittest.TestCase):
 
     """
     Create your tests here
