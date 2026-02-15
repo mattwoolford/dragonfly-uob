@@ -5,8 +5,8 @@ class Navigation(MissionModule):
 
     """
 
-    This mission module controls a sequence where the aircraft can land within 5m-10m of a point of interest,
-    release a package, take-off, and then return-to-home (RTH).
+    This mission module guides the aircraft by instructing it to fly to specified coordinates, respecting any defined
+    geofencing boundaries.
 
     """
 
