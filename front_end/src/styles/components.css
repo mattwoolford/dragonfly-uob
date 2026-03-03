@@ -1,0 +1,5 @@
+/* /src/components styles */
+@import "../components/Header/Header.css";
+
+/* /src/utils/components styles*/
+@import "../utils/components/Page/Page.css";

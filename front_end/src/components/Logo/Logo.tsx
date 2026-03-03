@@ -10,11 +10,11 @@ import { useEffect }   from "react";
 
 
 interface LogoProps extends SVGMotionProps<SVGSVGElement> {
-    animate?: boolean;
+    animateTimes?: number;
 }
 
 
-export default function Logo({animate: showAnimation = false, ...props}: LogoProps) {
+export default function Logo({animateTimes: animationRepeat = 0, ...props}: LogoProps) {
 
 
     const animationProgress = useMotionValue(0);
@@ -36,7 +36,7 @@ export default function Logo({animate: showAnimation = false, ...props}: LogoPro
     // Animate
     useEffect(() => {
 
-        if(!showAnimation) {
+        if(!animationRepeat) {
             // Disable animation
             animationProgress.stop();
             animationProgress.set(0);
@@ -47,12 +47,12 @@ export default function Logo({animate: showAnimation = false, ...props}: LogoPro
         const animation = animate(animationProgress, 1, {
             duration: 3,
             ease:     "easeInOut",
-            repeat:   Infinity,
+            repeat:   animationRepeat,
             repeatType: "mirror"
         });
 
         return () => animation.stop()
-    }, [animationProgress, showAnimation]);
+    }, [animationProgress, animationRepeat]);
 
     const animatedPaths = useTransform(animationProgress, [0, 1], animatedPathTransformations, {
         mixer: (a, b) => interpolate(a, b, {maxSegmentLength: 0.5}),
