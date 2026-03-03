@@ -1,0 +1,7 @@
+@layer components {
+
+    .Page {
+        @apply inline-block w-full min-h-dvh;
+    }
+
+}
