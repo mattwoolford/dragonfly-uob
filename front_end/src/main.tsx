@@ -6,6 +6,7 @@ import {
     RouterProvider
 }                     from "react-router";
 import Routes         from "./routes";
+import Page           from "@utils/components/Page/Page.tsx";
 
 
 const router = createBrowserRouter(Routes);
@@ -14,6 +15,8 @@ const root = document.getElementById('root');
 
 createRoot(root!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+      <Page>
+            <RouterProvider router={router} />
+      </Page>
   </StrictMode>,
 );
