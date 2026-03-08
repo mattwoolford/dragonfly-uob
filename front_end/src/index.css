@@ -3,6 +3,9 @@
 
 @theme {
   --color-background: rgb(20, 20, 27);
+
+  --font-mono: "Space Mono", Menlo, Monaco, Consolas, 'Courier New', monospace;
+
 }
 
 @layer base {
