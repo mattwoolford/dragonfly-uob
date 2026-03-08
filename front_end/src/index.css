@@ -1,10 +1,18 @@
 @import "tailwindcss";
 @import "./styles/components.css";
 
+@theme {
+  --color-background: rgb(20, 20, 27);
+}
+
 @layer base {
 
+  html, body {
+    @apply bg-background text-white;
+  }
+
   #root {
-    /*@apply inline-block w-full min-h-dvh m-0 p-0;*/
+    @apply min-h-dvh w-full p-0!;
   }
 
 }
