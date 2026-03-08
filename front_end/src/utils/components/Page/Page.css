@@ -1,7 +1,7 @@
 @layer components {
 
     .Page {
-        @apply inline-block w-full min-h-dvh;
+        @apply inline-block w-full relative min-h-[calc(100dvh-(var(--spacing)*20)-6px)];
     }
 
 }

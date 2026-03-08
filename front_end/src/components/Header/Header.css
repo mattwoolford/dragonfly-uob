@@ -1,7 +1,11 @@
 @layer components {
 
     .Header {
-        @apply flex flex-row justify-between items-center h-20 w-full fixed top-0 left-0 bg-white/80 backdrop-blur-2xl px-8 py-0;
+        @apply flex flex-row justify-between items-center h-20 w-full fixed top-0 left-0 bg-background/80 backdrop-blur-2xl px-8 py-0 isolate z-50;
+    }
+
+    .Header__placeholder {
+        @apply h-20 w-full;
     }
 
     .Header__left {

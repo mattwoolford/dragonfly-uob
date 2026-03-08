@@ -1,5 +1,6 @@
 /* /src/components styles */
 @import "../components/Header/Header.css";
+@import "../components/LoadingIcon/LoadingIcon.css";
 
 /* /src/utils/components styles*/
 @import "../utils/components/Page/Page.css";
