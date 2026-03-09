@@ -1,5 +1,5 @@
+import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
 import Logo           from "@components/Logo/Logo.tsx";
-import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.client.tsx";
 
 
 export default function LoadingIcon(){
