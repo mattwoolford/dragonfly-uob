@@ -1,13 +1,40 @@
-import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
 import Logo           from "@components/Logo/Logo.tsx";
+import {
+    Activity,
+    useLayoutEffect,
+    useState
+}                     from "react";
+import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
 
 
-export default function LoadingIcon(){
+interface LoadingIconProps {
+    prompt?: string;
+}
+
+
+export default function LoadingIcon({prompt = "Loading..."}: LoadingIconProps){
+
+
+    const [isMounted, setIsMounted] = useState(false);
+
+
+    useLayoutEffect(() => {
+
+        function handleLoadEffect() {
+            setIsMounted(true);
+        }
+
+        handleLoadEffect();
+
+    }, []);
+
 
     return (
         <div className={"LoadingIcon"}>
             <Logo animateTimes={Infinity} />
-            <p><KeyboardEffect>Loading...</KeyboardEffect></p>
+            <Activity mode={isMounted ? "visible" : "hidden"}>
+                <p><KeyboardEffect>{prompt}</KeyboardEffect></p>
+            </Activity>
         </div>
     )
 
