@@ -2,6 +2,7 @@ import {
     motion,
     type SVGMotionProps,
     useMotionValue,
+    useReducedMotion,
     useTransform
 }                          from "motion/react";
 import * as flubber        from "flubber";
@@ -17,6 +18,7 @@ interface LogoProps extends SVGMotionProps<SVGSVGElement> {
 export default function Logo({animateTimes: animationRepeat = 0, ...props}: LogoProps) {
 
 
+    const prefersReducedMotion = useReducedMotion();
     const animationProgress = useMotionValue(0);
 
 
@@ -36,6 +38,8 @@ export default function Logo({animateTimes: animationRepeat = 0, ...props}: Logo
     // Animate
     useLayoutEffect(() => {
 
+        if(prefersReducedMotion) return;
+
         if(!animationRepeat) {
             // Disable animation
             animationProgress.stop();
@@ -52,7 +56,7 @@ export default function Logo({animateTimes: animationRepeat = 0, ...props}: Logo
         });
 
         return () => animation.stop()
-    }, [animationProgress, animationRepeat]);
+    }, [animationProgress, animationRepeat, prefersReducedMotion]);
 
     const animatedPaths = useTransform(animationProgress, [0, 1], animatedPathTransformations, {
         mixer: (a, b) => flubber.interpolate(a, b, {maxSegmentLength: 0.5}),
