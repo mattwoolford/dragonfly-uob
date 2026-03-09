@@ -1,5 +1,6 @@
 import './mission.css';
-import LoadingIcon from "@components/LoadingIcon/LoadingIcon.tsx";
+import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
+import LoadingIcon    from "@components/LoadingIcon/LoadingIcon.tsx";
 
 
 export async function clientLoader() {
@@ -23,7 +24,9 @@ export default function Mission() {
 
   return (
     <>
-      <p>Loaded</p>
+      <section className={"px-4"}>
+        <p className={"font-bold text-2xl"}><KeyboardEffect showEndCursor={false}>DragonFly Mission Control</KeyboardEffect></p>
+      </section>
     </>
   )
 }
