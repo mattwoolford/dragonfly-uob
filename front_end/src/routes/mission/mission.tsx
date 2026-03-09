@@ -2,13 +2,11 @@ import './mission.css';
 import LoadingIcon from "@components/LoadingIcon/LoadingIcon.tsx";
 
 
-function Mission() {
+export default function Mission() {
 
   return (
     <>
-        <LoadingIcon />
+      <LoadingIcon />
     </>
   )
 }
-
-export default Mission

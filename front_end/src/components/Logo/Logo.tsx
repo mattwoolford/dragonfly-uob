@@ -3,10 +3,10 @@ import {
     type SVGMotionProps,
     useMotionValue,
     useTransform
-}                      from "motion/react";
-import { interpolate } from "flubber";
-import { animate }     from "motion";
-import { useEffect }   from "react";
+}                          from "motion/react";
+import * as flubber        from "flubber";
+import { animate }         from "motion";
+import { useLayoutEffect } from "react";
 
 
 interface LogoProps extends SVGMotionProps<SVGSVGElement> {
@@ -34,7 +34,7 @@ export default function Logo({animateTimes: animationRepeat = 0, ...props}: Logo
 
     // Effects
     // Animate
-    useEffect(() => {
+    useLayoutEffect(() => {
 
         if(!animationRepeat) {
             // Disable animation
@@ -55,7 +55,7 @@ export default function Logo({animateTimes: animationRepeat = 0, ...props}: Logo
     }, [animationProgress, animationRepeat]);
 
     const animatedPaths = useTransform(animationProgress, [0, 1], animatedPathTransformations, {
-        mixer: (a, b) => interpolate(a, b, {maxSegmentLength: 0.5}),
+        mixer: (a, b) => flubber.interpolate(a, b, {maxSegmentLength: 0.5}),
     });
 
 

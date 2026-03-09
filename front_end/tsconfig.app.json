@@ -32,6 +32,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "rootDirs": [
+      ".",
+      "./.react-router/types"
+    ],
 
     /* Linting */
     "strict": true,
@@ -41,5 +45,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "react-router.config.ts",
+    ".react-router/types/**/*"
+  ]
 }
