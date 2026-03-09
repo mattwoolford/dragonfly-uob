@@ -2,7 +2,7 @@
 
     .LoadingIcon {
 
-        @apply flex flex-col items-center justify-center absolute inset-0 w-full h-full min-h-40 font-mono backdrop-blur-2xl bg-background/20;
+        @apply flex flex-col items-center justify-center absolute inset-0 w-full h-full min-h-40 font-mono backdrop-blur-2xl bg-background/20 text-white;
 
     }
 
