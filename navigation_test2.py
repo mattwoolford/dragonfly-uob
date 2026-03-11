@@ -1,8 +1,9 @@
 import asyncio
 import math
 import time
+import threading
 from enum import Enum
-from mavsdk import System
+from pymavlink import mavutil
 from shapely.geometry import Point, Polygon
 
 
@@ -24,11 +25,11 @@ class DroneState(Enum):
 # 主类 / Main Class
 # ---------------------------------------------------------------------------
 class NavigationInterface:
-    def __init__(self, drone_instance=None, refresh_interval: float = 5.0):
-        self.drone = drone_instance if drone_instance else System()
+    def __init__(self, connection_string: str = "tcp:127.0.0.1:5761", refresh_interval: float = 5.0):
+        self.connection_string = connection_string
+        self._mav = None
 
-        # R01: 飞行区域边界（KML 导入，Shapely 使用经度在前）
-        # R01: Flight area boundary (from KML; Shapely uses longitude-first)
+        # R01: 飞行区域边界 / Flight area boundary
         self.flight_area = Polygon([
             (-2.671720766408759, 51.42342595349562),
             (-2.670134027271237, 51.42124623420381),
@@ -50,193 +51,135 @@ class NavigationInterface:
         # R04: 最大飞行高度 / Maximum altitude
         self.max_alt = 50.0
 
-        # 刷新间隔（秒）/ Status refresh interval (seconds)
         self._refresh_interval = refresh_interval
 
-        # ---------- 状态机内部数据 / State machine internal data ----------
+        # ---------- 状态机 / State machine ----------
         self._state: DroneState = DroneState.IDLE
-
-        # 当前遥测数据 / Current telemetry snapshot
-        self._telemetry = {
-            "lat": None,
-            "lon": None,
-            "alt": None,
-        }
-
-        # 当前任务目标 / Active mission target
-        self._target = {
-            "lat": None,
-            "lon": None,
-            "alt": None,
-        }
-
-        # 任务进度数据 / Mission progress data
-        self._mission = {
-            "start_dist": None,   # 起始距离（米）/ Initial distance (m)
-            "current_dist": None, # 当前剩余距离（米）/ Current remaining distance (m)
-            "progress_pct": 0.0,  # 完成百分比 / Completion percentage
-        }
-
-        # 错误信息 / Error information
         self._error_reason: str = ""
 
-        # 后台刷新任务句柄 / Background refresh task handle
+        # 遥测缓存 / Telemetry cache (updated by recv thread)
+        self._telemetry = {"lat": None, "lon": None, "alt": None, "alt_amsl": None}
+
+        # 消息缓存（按类型存最新消息）/ Latest message cache by type
+        self._msg_cache: dict = {}
+
+        # 任务目标与进度 / Mission target and progress
+        self._target  = {"lat": None, "lon": None, "alt": None}
+        self._mission = {"start_dist": None, "current_dist": None, "progress_pct": 0.0}
+
+        # 线程与任务句柄 / Thread and task handles
+        self._send_lock = threading.Lock()
+        self._running = False
+        self._recv_thread_handle: threading.Thread | None = None
         self._refresh_task: asyncio.Task | None = None
 
     # -----------------------------------------------------------------------
-    # 状态机写入（内部使用）/ State transition (internal)
+    # 状态机 / State machine
     # -----------------------------------------------------------------------
     def _set_state(self, new_state: DroneState, error_reason: str = ""):
         self._state = new_state
         self._error_reason = error_reason
 
-    # -----------------------------------------------------------------------
-    # 地面站接口：获取完整状态快照
-    # Ground station interface: get a full status snapshot
-    # -----------------------------------------------------------------------
     def get_status(self) -> dict:
-        """
-        返回当前无人机状态快照（地面站轮询入口）。
-        所有字段均可直接序列化为 JSON。
-
-        Returns the current UAV status snapshot (ground station polling entry point).
-        All fields are directly JSON-serialisable.
-        """
         return {
-            # 状态机状态 / State machine state
-            "state":          self._state.value,
-
-            # 遥测位置 / Telemetry position
-            "lat":            self._telemetry["lat"],
-            "lon":            self._telemetry["lon"],
-            "alt":            self._telemetry["alt"],
-
-            # 当前任务目标 / Active mission target
-            "target_lat":     self._target["lat"],
-            "target_lon":     self._target["lon"],
-            "target_alt":     self._target["alt"],
-
-            # 任务进度 / Mission progress
-            "progress_pct":   round(self._mission["progress_pct"], 1),
-            "remaining_m":    round(self._mission["current_dist"], 1)
-                              if self._mission["current_dist"] is not None else None,
-
-            # 错误原因（无错误时为空字符串）/ Error reason (empty string when no error)
-            "error":          self._error_reason,
-
-            # 快照时间戳（Unix 秒）/ Snapshot timestamp (Unix seconds)
-            "timestamp":      round(time.time(), 3),
+            "state":        self._state.value,
+            "lat":          self._telemetry["lat"],
+            "lon":          self._telemetry["lon"],
+            "alt":          self._telemetry["alt"],
+            "target_lat":   self._target["lat"],
+            "target_lon":   self._target["lon"],
+            "target_alt":   self._target["alt"],
+            "progress_pct": round(self._mission["progress_pct"], 1),
+            "remaining_m":  round(self._mission["current_dist"], 1)
+                            if self._mission["current_dist"] is not None else None,
+            "error":        self._error_reason,
+            "timestamp":    round(time.time(), 3),
         }
 
     # -----------------------------------------------------------------------
-    # 后台定时刷新协程 / Background periodic refresh coroutine
+    # 后台接收线程：读取所有消息并缓存
+    # Background recv thread: read all messages and cache by type
+    # -----------------------------------------------------------------------
+    def _recv_loop(self):
+        while self._running:
+            if not self._mav:
+                time.sleep(0.1)
+                continue
+            try:
+                msg = self._mav.recv_match(blocking=True, timeout=0.5)
+                if msg is None or msg.get_type() == 'BAD_DATA':
+                    continue
+                mtype = msg.get_type()
+                self._msg_cache[mtype] = msg
+                if mtype == 'GLOBAL_POSITION_INT':
+                    self._telemetry["lat"]      = msg.lat / 1e7
+                    self._telemetry["lon"]       = msg.lon / 1e7
+                    self._telemetry["alt"]       = msg.relative_alt / 1000.0  # mm → m
+                    self._telemetry["alt_amsl"]  = msg.alt / 1000.0           # mm → m
+            except Exception:
+                pass
+
+    # -----------------------------------------------------------------------
+    # 后台任务进度刷新协程 / Background mission progress refresh coroutine
     # -----------------------------------------------------------------------
     async def _refresh_loop(self):
-        """
-        每隔 self._refresh_interval 秒刷新一次遥测数据和任务进度。
-        Refresh telemetry and mission progress every self._refresh_interval seconds.
-        """
         while True:
             await asyncio.sleep(self._refresh_interval)
+            if self._state != DroneState.FLYING or self._target["lat"] is None:
+                continue
+            if self._telemetry["lat"] is None:
+                continue
+            try:
+                dist = await self.get_distance_to_target(self._target["lat"], self._target["lon"])
+                self._mission["current_dist"] = dist
+                start = self._mission["start_dist"]
+                if start and start > 0:
+                    self._mission["progress_pct"] = max(0.0, min(100.0, (1 - dist / start) * 100))
+                if dist < 2.0:
+                    self._set_state(DroneState.ARRIVED)
+                    self._mission["progress_pct"] = 100.0
+                    print("已到达目标 / Arrived at target.")
+                else:
+                    print(f"[状态/Status] {self._state.value} | "
+                          f"进度/Progress: {self._mission['progress_pct']:.1f}% | "
+                          f"剩余/Remaining: {dist:.1f} m")
+            except Exception as e:
+                self._set_state(DroneState.ERROR, f"PROGRESS_FAIL: {e}")
 
-            # 仅在已连接时更新遥测 / Only update telemetry when connected
-            if self._state in (DroneState.FLYING, DroneState.HOVERING,
-                               DroneState.CONNECTED, DroneState.ARRIVED,
-                               DroneState.RTH):
-                try:
-                    async for pos in self.drone.telemetry.position():
-                        self._telemetry["lat"] = pos.latitude_deg
-                        self._telemetry["lon"] = pos.longitude_deg
-                        self._telemetry["alt"] = pos.absolute_altitude_m
-                        break
-                except Exception as e:
-                    self._set_state(DroneState.ERROR, f"TELEMETRY_FAIL: {e}")
-                    continue
-
-            # 飞行中：更新任务进度 / While flying: update mission progress
-            if self._state == DroneState.FLYING and self._target["lat"] is not None:
-                try:
-                    dist = await self.get_distance_to_target(
-                        self._target["lat"], self._target["lon"]
-                    )
-                    self._mission["current_dist"] = dist
-
-                    start = self._mission["start_dist"]
-                    if start and start > 0:
-                        self._mission["progress_pct"] = max(
-                            0.0, min(100.0, (1 - dist / start) * 100)
-                        )
-
-                    # 到达判定：距目标 < 2 m / Arrival: within 2 m of target
-                    if dist < 2.0:
-                        self._set_state(DroneState.ARRIVED)
-                        self._mission["progress_pct"] = 100.0
-                        print("已到达目标 / Arrived at target.")
-
-                    else:
-                        print(
-                            f"[状态/Status] {self._state.value} | "
-                            f"进度/Progress: {self._mission['progress_pct']:.1f}% | "
-                            f"剩余/Remaining: {dist:.1f} m"
-                        )
-                except Exception as e:
-                    self._set_state(DroneState.ERROR, f"PROGRESS_FAIL: {e}")
-
-    # -----------------------------------------------------------------------
-    # 启动后台刷新任务 / Start background refresh task
-    # -----------------------------------------------------------------------
     def start_refresh(self):
-        """
-        启动状态刷新后台协程（需在 asyncio 事件循环内调用）。
-        Start the background status refresh coroutine (must be called inside an asyncio event loop).
-        """
         if self._refresh_task is None or self._refresh_task.done():
             self._refresh_task = asyncio.ensure_future(self._refresh_loop())
 
     def stop_refresh(self):
-        """停止刷新任务 / Stop the refresh task."""
+        self._running = False
         if self._refresh_task and not self._refresh_task.done():
             self._refresh_task.cancel()
 
     # -----------------------------------------------------------------------
     # 连接 / Connect
     # -----------------------------------------------------------------------
-    async def connect(self, address=None):
-        """
-        智能连接接口。复用已有连接或按地址建立新连接，并自动启动状态刷新。
-        Smart connection interface. Reuse an existing connection or connect to the
-        given address, then automatically start the status refresh loop.
-        """
+    async def connect(self, address: str = None):
+        if address:
+            self.connection_string = address
         self._set_state(DroneState.CONNECTING)
-
-        # 尝试复用已有连接 / Try to reuse an existing connection
         try:
-            async for state in self.drone.core.connection_state():
-                if state.is_connected:
-                    print("Navigation module: Using existing active connection.")
-                    self._set_state(DroneState.CONNECTED)
-                    self.start_refresh()
-                    return True
-                break
-        except Exception:
-            print("No active connection found, attempting to connect...")
-
-        # 建立新连接 / Establish a new connection
-        # 推荐地址 / Recommended addresses:
-        #   仿真 / Simulation : udp://:14540
-        #   实机 / Real drone : serial:///dev/ttyAMA0:57600
-        target_address = address if address else "udp://:14540"
-
-        try:
-            await self.drone.connect(system_address=target_address)
-            print(f"Connecting to drone at {target_address}...")
-
-            async for state in self.drone.core.connection_state():
-                if state.is_connected:
-                    print(f"Successfully connected to {target_address}")
-                    self._set_state(DroneState.CONNECTED)
-                    self.start_refresh()
-                    return True
+            loop = asyncio.get_event_loop()
+            def _do_connect():
+                mav = mavutil.mavlink_connection(self.connection_string)
+                mav.wait_heartbeat(timeout=10)
+                mav.mav.request_data_stream_send(
+                    mav.target_system, mav.target_component,
+                    mavutil.mavlink.MAV_DATA_STREAM_POSITION, 4, 1
+                )
+                return mav
+            self._mav = await loop.run_in_executor(None, _do_connect)
+            self._running = True
+            self._recv_thread_handle = threading.Thread(target=self._recv_loop, daemon=True)
+            self._recv_thread_handle.start()
+            self._set_state(DroneState.CONNECTED)
+            self.start_refresh()
+            print(f"Connected to {self.connection_string}")
+            return True
         except Exception as e:
             self._set_state(DroneState.ERROR, f"CONNECTION_FAIL: {e}")
             print(f"Connection failed: {e}")
@@ -246,10 +189,6 @@ class NavigationInterface:
     # 地理围栏安全检查 / Geofence safety check
     # -----------------------------------------------------------------------
     def check_safety(self, lat, lon, alt):
-        """
-        R30 自动地理围栏预检查。
-        R30 automatic geofence pre-check. [cite: 28, 30]
-        """
         p = Point(lon, lat)
         if not self.flight_area.contains(p):
             return False, "OUTSIDE_FLIGHT_AREA"
@@ -260,111 +199,180 @@ class NavigationInterface:
         return True, "SAFE"
 
     # -----------------------------------------------------------------------
-    # Haversine 距离计算 / Haversine distance calculation
+    # Haversine 距离计算（使用缓存遥测）/ Haversine distance (uses cached telemetry)
     # -----------------------------------------------------------------------
     async def get_distance_to_target(self, target_lat, target_lon):
-        """
-        从遥测流读取当前位置，用 Haversine 公式返回水平距离（米）。
-        Read current position from telemetry and return horizontal distance (m) via Haversine.
-        """
-        async for pos in self.drone.telemetry.position():
-            cur_lat = pos.latitude_deg
-            cur_lon = pos.longitude_deg
-            break
-
-        R = 6_371_000  # 地球平均半径（米）/ Mean Earth radius (m)
-        phi1, phi2 = math.radians(cur_lat), math.radians(target_lat)
+        cur_lat = self._telemetry["lat"]
+        cur_lon = self._telemetry["lon"]
+        if cur_lat is None or cur_lon is None:
+            raise RuntimeError("No telemetry data yet / 尚无遥测数据")
+        R = 6_371_000
+        phi1 = math.radians(cur_lat)
+        phi2 = math.radians(target_lat)
         dphi = math.radians(target_lat - cur_lat)
         dlam = math.radians(target_lon - cur_lon)
         a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
         return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     # -----------------------------------------------------------------------
-    # 核心导航指令 / Core navigation command
+    # 底层发送指令（线程安全）/ Low-level send helpers (thread-safe)
+    # -----------------------------------------------------------------------
+    def _send_mode(self, custom_mode: int):
+        """切换 ArduCopter 飞行模式 / Switch ArduCopter flight mode."""
+        with self._send_lock:
+            self._mav.mav.command_long_send(
+                self._mav.target_system, self._mav.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                custom_mode, 0, 0, 0, 0, 0
+            )
+
+    def _send_goto_cmd(self, lat: float, lon: float, alt: float):
+        """发送位置目标（相对高度）/ Send position target (relative altitude)."""
+        with self._send_lock:
+            self._mav.mav.set_position_target_global_int_send(
+                0,                                                          # time_boot_ms
+                self._mav.target_system, self._mav.target_component,
+                mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                0b0000111111111000,                                         # 仅位置 / position only
+                int(lat * 1e7), int(lon * 1e7), alt,
+                0, 0, 0,                                                    # velocity
+                0, 0, 0,                                                    # acceleration
+                0, 0                                                        # yaw, yaw_rate
+            )
+
+    # -----------------------------------------------------------------------
+    # Arm + Takeoff
+    # -----------------------------------------------------------------------
+    def _arm_and_takeoff_sync(self, takeoff_alt: float) -> bool:
+        mav = self._mav
+
+        # 关闭 arming 预检（仅 SITL）/ Disable arming checks (SITL only)
+        mav.mav.param_set_send(
+            mav.target_system, mav.target_component,
+            b'ARMING_CHECK', 0, mavutil.mavlink.MAV_PARAM_TYPE_INT32
+        )
+        time.sleep(0.5)
+
+        # 切换 GUIDED 模式 / Switch to GUIDED (mode 4)
+        self._send_mode(4)
+        time.sleep(1)
+
+        # Force arm
+        with self._send_lock:
+            mav.mav.command_long_send(
+                mav.target_system, mav.target_component,
+                mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0,
+                1, 21196, 0, 0, 0, 0, 0
+            )
+        time.sleep(2)
+
+        # 确认 arm 状态（从消息缓存轮询）/ Confirm arm via message cache
+        armed = False
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            hb = self._msg_cache.get('HEARTBEAT')
+            if hb and hb.get_srcSystem() == 1:
+                armed = bool(hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+                print(f"    arm={'成功/OK' if armed else '失败/FAIL'}, mode={hb.custom_mode}")
+                if armed:
+                    break
+            time.sleep(0.5)
+
+        if not armed:
+            return False
+
+        # 发送 takeoff 指令 / Send takeoff command
+        print(f"    Takeoff → {takeoff_alt} m (relative)...")
+        with self._send_lock:
+            mav.mav.command_long_send(
+                mav.target_system, mav.target_component,
+                mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
+                0, 0, 0, 0, 0, 0, takeoff_alt
+            )
+
+        # 等待 ACK（从消息缓存）/ Wait for ACK from cache
+        ack = None
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            a = self._msg_cache.get('COMMAND_ACK')
+            if a:
+                ack = a
+                break
+            time.sleep(0.1)
+        print(f"    Takeoff ACK: result={ack.result if ack else 'none'}")
+        return True
+
+    async def arm_and_takeoff(self, takeoff_alt: float) -> bool:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._arm_and_takeoff_sync, takeoff_alt)
+
+    # -----------------------------------------------------------------------
+    # 核心导航指令 / Core navigation commands
     # -----------------------------------------------------------------------
     async def goto(self, lat, lon, alt):
         """
-        R30 核心导航：安全预检查 → 发送指令 → 状态机切换为 FLYING。
-        进度由后台 _refresh_loop 定时更新，地面站通过 get_status() 轮询即可。
-
-        R30 core navigation: safety pre-check → send command → state machine switches to FLYING.
-        Progress is updated by the background _refresh_loop; ground station polls via get_status().
+        安全预检 → GUIDED 模式 → 发送位置目标 → 状态切 FLYING。
+        可随时重新调用以更改目标。
+        Safety check → GUIDED mode → send position target → state = FLYING.
+        Call again at any time to change target mid-flight.
         """
-        # 1. 安全预检查 / Safety pre-check
         is_safe, reason = self.check_safety(lat, lon, alt)
         if not is_safe:
             self._set_state(DroneState.ERROR, reason)
             print(f"安全拦截 / Safety interception: {reason}")
             return False
 
-        # 2. 记录目标与起始距离 / Record target and initial distance
-        start_dist = await self.get_distance_to_target(lat, lon)
-        self._target = {"lat": lat, "lon": lon, "alt": alt}
-        self._mission = {
-            "start_dist":   start_dist,
-            "current_dist": start_dist,
-            "progress_pct": 0.0,
-        }
+        loop = asyncio.get_event_loop()
 
-        # 3. 发送飞控指令 / Send flight controller command
-        await self.drone.action.goto_location(lat, lon, alt, 0)
+        # 确保 GUIDED 模式 / Ensure GUIDED mode
+        await loop.run_in_executor(None, self._send_mode, 4)
+        await asyncio.sleep(0.3)
 
-        # 4. 切换状态，由后台协程接管进度监测
-        # 4. Switch state; background coroutine takes over progress monitoring
+        # 记录目标和起始距离 / Record target and initial distance
+        if self._telemetry["lat"] is not None:
+            start_dist = await self.get_distance_to_target(lat, lon)
+        else:
+            start_dist = 0.0
+        self._target  = {"lat": lat, "lon": lon, "alt": alt}
+        self._mission = {"start_dist": start_dist, "current_dist": start_dist, "progress_pct": 0.0}
+
+        # 发送位置目标 / Send position target
+        await loop.run_in_executor(None, self._send_goto_cmd, lat, lon, alt)
         self._set_state(DroneState.FLYING)
-        print(f"飞往目标 / Flying to target: lat={lat}, lon={lon}, alt={alt} m")
+        print(f"飞往目标 / Flying to: lat={lat}, lon={lon}, alt={alt} m (relative)")
         return True
 
-    # -----------------------------------------------------------------------
-    # 悬停 / Hold
-    # -----------------------------------------------------------------------
     async def hold(self):
         """
-        R09: 立即中断任务并悬停。
-        R09: Immediately interrupt the mission and hover in place. [cite: 28]
+        R09: 切换 LOITER 模式原地悬停（不清除任务）。
+        R09: Switch to LOITER mode to hover in place (mission not cleared).
         """
-        await self.drone.action.hold()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_mode, 5)  # LOITER = mode 5
         self._set_state(DroneState.HOVERING)
-        print("Mission Paused: Hovering")
+        print("Mission Paused: Hovering (LOITER)")
 
-    # -----------------------------------------------------------------------
-    # 取消任务并悬停 / Cancel mission and hover
-    # -----------------------------------------------------------------------
     async def cancel(self):
         """
-        取消当前飞行任务：清空目标与进度数据，然后原地悬停。
-        与 hold() 的区别：hold() 仅暂停，cancel() 会同时清除任务状态，
+        取消任务：LOITER 悬停 + 清除目标和进度。
         之后需重新调用 goto() 才能继续飞行。
-
-        Cancel the current flight mission: clear target and progress data, then hover.
-        Difference from hold(): hold() only pauses, cancel() also clears mission state —
-        a new goto() call is required to resume flight afterwards.
+        Cancel mission: LOITER hover + clear target and progress.
+        A new goto() call is required to resume flight.
         """
-        # 发送悬停指令给飞控 / Send hold command to flight controller
-        await self.drone.action.hold()
-
-        # 清空任务目标 / Clear mission target
-        self._target = {"lat": None, "lon": None, "alt": None}
-
-        # 重置进度数据 / Reset progress data
-        self._mission = {
-            "start_dist":   None,
-            "current_dist": None,
-            "progress_pct": 0.0,
-        }
-
-        # 切换至悬停状态 / Transition to HOVERING state
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_mode, 5)  # LOITER = mode 5
+        self._target  = {"lat": None, "lon": None, "alt": None}
+        self._mission = {"start_dist": None, "current_dist": None, "progress_pct": 0.0}
         self._set_state(DroneState.HOVERING)
         print("任务已取消，无人机悬停中 / Mission cancelled, drone hovering.")
 
-    # -----------------------------------------------------------------------
-    # 返航 / Return to launch
-    # -----------------------------------------------------------------------
     async def rth(self):
         """
-        R09: 触发自动返航（RTL）。
-        R09: Trigger automatic Return to Launch (RTL). [cite: 28]
+        R09: 切换 RTL 模式自动返航。
+        R09: Switch to RTL mode for automatic return to launch.
         """
-        await self.drone.action.return_to_launch()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._send_mode, 6)  # RTL = mode 6
         self._set_state(DroneState.RTH)
         print("Returning to TOL")
