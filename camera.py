@@ -2,42 +2,58 @@ from pathlib import Path
 import subprocess
 
 
-def capture_and_upload_image(camera, local_image_path, host_user, host_ip, remote_path):
+def capture_and_upload_image(
+    camera,
+    filename,
+    host_user,
+    host_ip,
+    remote_dir,
+    desktop_folder_name="drone_images"
+):
     """
-    Capture one image with an already-initialized camera and upload it to a host computer.
+    Capture one image with an already-initialized Raspberry Pi camera
+    and upload it to a host computer via scp.
 
-    Args:
-        camera: An already-initialized camera object (e.g. Picamera2 instance).
-        local_image_path (str): Local path/filename to save the captured image.
-        host_user (str): Username on the host computer.
-        host_ip (str): IP address of the host computer.
-        remote_path (str): Destination path on the host computer.
+    Parameters
+    ----------
+    camera : Picamera2
+        An already-initialized and already-running camera object.
+    filename : str
+        Image filename, e.g. "image_001.jpg".
+    host_user : str
+        Username on the host computer.
+    host_ip : str
+        IP address of the host computer.
+    remote_dir : str
+        Destination directory on the host computer.
+    desktop_folder_name : str, optional
+        Name of the folder to create/use on the Desktop.
 
-    Returns:
-        str: The local image path if capture and upload succeed.
-
-    Raises:
-        RuntimeError: If image capture or upload fails.
+    Returns
+    -------
+    tuple[str, str]
+        (local_image_path, remote_image_path)
     """
-    local_image_path = str(Path(local_image_path))
 
-    # 1. Capture one image
-    try:
-        camera.capture_file(local_image_path)
-    except Exception as e:
-        raise RuntimeError(f"Image capture failed: {e}")
+    # Create/use a folder on the Desktop
+    desktop_path = Path.home() / "Desktop"
+    save_folder = desktop_path / desktop_folder_name
+    save_folder.mkdir(parents=True, exist_ok=True)
 
-    # 2. Upload image to host computer
-    try:
-        subprocess.run(
-            [
-                "scp",
-                local_image_path,
-                f"{host_user}@{host_ip}:{remote_path}"
-            ],
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Image upload failed: {e}")
+    # Full local path
+    local_image_path = save_folder / filename
 
-    return local_image_path
+    # Capture one image to local file
+    camera.capture_file(str(local_image_path))
+
+    # Upload image to host computer
+    remote_target = f"{host_user}@{host_ip}:{remote_dir}"
+    subprocess.run(
+        ["scp", str(local_image_path), remote_target],
+        check=True
+    )
+
+    # Final remote path string for reference
+    remote_image_path = f"{remote_dir.rstrip('/')}/{filename}"
+
+    return str(local_image_path), remote_image_path

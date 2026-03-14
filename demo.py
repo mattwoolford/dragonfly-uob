@@ -14,6 +14,9 @@ CELL_H = 30.0
 HALF_W = CELL_W / 2.0
 HALF_H = CELL_H / 2.0
 
+#REPAIR COVERAGE#
+MIN_REPAIR_COVERAGE_RATIO = 0.005  # 0.5%
+
 # Marker sampling: 2m x 2m points
 MARKER_STEP = 2.0
 
@@ -27,8 +30,8 @@ MAX_MOVE_CELLS = 2
 REPAIR_STEP = 5.0
 
 # Direction rule:
-# if iy < 3 -> move right
-# else      -> move up
+# if iy < 3 -> move left or right
+# else      -> move in full 2D (up/down/left/right, combined)
 DIRECTION_SPLIT_ROWS = 3
 
 
@@ -119,6 +122,13 @@ def point_in_rect(px: float, py: float, cx: float, cy: float) -> bool:
     return (cx - HALF_W <= px <= cx + HALF_W) and (cy - HALF_H <= py <= cy + HALF_H)
 
 
+def frange(start: float, stop: float, step: float):
+    x = start
+    while x <= stop + 1e-9:
+        yield x
+        x += step
+
+
 # ============================================================
 # Marker sampling (2m x 2m points inside blue polygon)
 # ============================================================
@@ -176,117 +186,235 @@ def generate_grid_with_indices(green_rect: Polygon, dx: float = 0.0, dy: float =
 
 
 # ============================================================
-# Coverage map building
+# Coverage helpers
 # ============================================================
 
-def build_cover_set_for_cell(cx: float, cy: float, markers: List[Point]) -> Set[int]:
+def build_cover_set_for_cell_from_indices(
+    cx: float,
+    cy: float,
+    markers: List[Point],
+    candidate_indices: Set[int]
+) -> Set[int]:
+    """
+    Only test marker indices in candidate_indices.
+    This is much cheaper than scanning all markers every time.
+    """
     covered: Set[int] = set()
-    for i, (mx, my) in enumerate(markers):
+    for i in candidate_indices:
+        mx, my = markers[i]
         if point_in_rect(mx, my, cx, cy):
             covered.add(i)
     return covered
 
 
 # ============================================================
-# Greedy selection (GOOD cells only)
+# Cell classification
+# ============================================================
+
+def classify_cells(
+    cells: List[Tuple[float, float, int, int]],
+    orange_poly: Polygon,
+    blue_poly: Polygon
+):
+    """
+    GOOD:
+        - center in blue
+        - center not in orange
+
+    BAD:
+        - intersects blue
+        - center not in blue
+    """
+    good: List[Tuple[float, float, int, int]] = []
+    bad: List[Tuple[float, float, int, int]] = []
+
+    for cx, cy, ix, iy in cells:
+        if not rect_intersects_polygon(cx, cy, blue_poly):
+            continue
+
+        if point_in_polygon((cx, cy), blue_poly):
+            if not point_in_polygon((cx, cy), orange_poly):
+                good.append((cx, cy, ix, iy))
+        else:
+            bad.append((cx, cy, ix, iy))
+
+    return good, bad
+
+
+# ============================================================
+# Greedy selection (GOOD cells only, with dynamic uncovered set)
 # ============================================================
 
 def greedy_select_cells(
     good_cells: List[Tuple[float, float, int, int]],
     markers: List[Point]
 ) -> Tuple[List[Tuple[float, float, int, int]], Set[int]]:
-    """Select cells to cover as many marker points as possible (greedy)."""
-    cover_map: List[Set[int]] = []
-    for cx, cy, _, _ in good_cells:
-        cover_map.append(build_cover_set_for_cell(cx, cy, markers))
-
+    """
+    Greedy set cover using a dynamic uncovered marker set.
+    Cover sets are always computed only against the current uncovered markers.
+    """
     uncovered: Set[int] = set(range(len(markers)))
     selected: List[Tuple[float, float, int, int]] = []
     remaining = set(range(len(good_cells)))
 
     while uncovered:
         best_idx = None
+        best_cover: Set[int] = set()
         best_gain = 0
 
         for idx in list(remaining):
-            gain = len(cover_map[idx] & uncovered)
+            cx, cy, _, _ = good_cells[idx]
+            covered = build_cover_set_for_cell_from_indices(cx, cy, markers, uncovered)
+            gain = len(covered)
+
             if gain > best_gain:
                 best_gain = gain
                 best_idx = idx
+                best_cover = covered
 
         if best_idx is None or best_gain == 0:
             break
 
         selected.append(good_cells[best_idx])
-        uncovered -= cover_map[best_idx]
+        uncovered -= best_cover
         remaining.remove(best_idx)
 
     return selected, uncovered
 
 
 # ============================================================
-# BAD-cell repair (fine movement in one direction)
+# BAD-cell repair (dynamic uncovered set)
 # ============================================================
+
+def choose_candidate_by_average_move(candidates):
+    """
+    candidates: list of (move_value, nx, ny, covered_set)
+
+    Rule:
+    - among equal-best-gain candidates,
+      compute target_move = (min_move + max_move) / 2
+    - choose candidate whose move_value is closest to target_move
+    - if still tied, choose the one with smaller move_value
+    """
+    if not candidates:
+        return None
+
+    move_values = [c[0] for c in candidates]
+    min_move = min(move_values)
+    max_move = max(move_values)
+    target_move = (min_move + max_move) / 2.0
+
+    best = None
+    best_dist = float("inf")
+    best_move = float("inf")
+
+    for cand in candidates:
+        move_value = cand[0]
+        dist = abs(move_value - target_move)
+
+        if dist < best_dist:
+            best = cand
+            best_dist = dist
+            best_move = move_value
+        elif abs(dist - best_dist) < 1e-12:
+            if move_value < best_move:
+                best = cand
+                best_move = move_value
+
+    return best
+
 
 def repair_bad_cells(
     bad_cells: List[Tuple[float, float, int, int]],
     uncovered: Set[int],
     markers: List[Point],
     orange_poly: Polygon,
+    green_rect: Polygon,
     blue_poly: Polygon
 ) -> Tuple[List[Tuple[float, float, int, int]], Set[int]]:
-    """
-    For each BAD cell, attempt to move in only one direction:
-    - If iy < DIRECTION_SPLIT_ROWS: move right
-    - Else: move up
-
-    The movement is scanned using fine steps (REPAIR_STEP),
-    instead of only whole-cell jumps, so small boundary gaps
-    can be filled.
-    """
     repaired: List[Tuple[float, float, int, int]] = []
     uncovered_now = set(uncovered)
 
-    max_shift = MAX_MOVE_CELLS * (CELL_W if CELL_W >= CELL_H else CELL_H)
+    max_shift = MAX_MOVE_CELLS * max(CELL_W, CELL_H)
+    shift_values = list(frange(REPAIR_STEP, max_shift, REPAIR_STEP))
 
     for cx, cy, ix, iy in bad_cells:
-        move_right = (iy < DIRECTION_SPLIT_ROWS)
-
-        best_pos = None
         best_gain = 0
+        best_candidates = []
 
-        shift = REPAIR_STEP
-        while shift <= max_shift + 1e-9:
-            nx = cx + (shift if move_right else 0.0)
-            ny = cy + (shift if not move_right else 0.0)
+        if iy < DIRECTION_SPLIT_ROWS:
+            for shift in shift_values:
+                for sign in (-1.0, 1.0):
+                    nx = cx + sign * shift
+                    ny = cy
+                    move_value = abs(sign * shift)
 
-            # New center must be outside orange
-            if point_in_polygon((nx, ny), orange_poly):
-                shift += REPAIR_STEP
-                continue
+                    if not point_in_polygon((nx, ny), blue_poly):
+                        continue
 
-            # New rectangle must still intersect blue
-            if not rect_intersects_polygon(nx, ny, blue_poly):
-                shift += REPAIR_STEP
-                continue
+                    covered = build_cover_set_for_cell_from_indices(
+                        nx, ny, markers, uncovered_now
+                    )
+                    gain = len(covered)
 
-            covered = build_cover_set_for_cell(nx, ny, markers)
-            gain = len(covered & uncovered_now)
+                    if gain <= 0:
+                        continue
 
-            if gain > best_gain:
-                best_gain = gain
-                best_pos = (nx, ny)
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_candidates = [(move_value, nx, ny, covered)]
+                    elif gain == best_gain:
+                        best_candidates.append((move_value, nx, ny, covered))
+        else:
+            delta_values = [0.0]
+            for s in shift_values:
+                delta_values.append(s)
+                delta_values.append(-s)
 
-            shift += REPAIR_STEP
+            for dy in delta_values:
+                for dx in delta_values:
+                    if abs(dx) < 1e-12 and abs(dy) < 1e-12:
+                        continue
 
-        if best_pos is None or best_gain == 0:
+                    nx = cx + dx
+                    ny = cy + dy
+                    move_value = abs(dx) + abs(dy)
+
+                    if not point_in_polygon((nx, ny), blue_poly):
+                        continue
+
+                    covered = build_cover_set_for_cell_from_indices(
+                        nx, ny, markers, uncovered_now
+                    )
+                    gain = len(covered)
+
+                    if gain <= 0:
+                        continue
+
+                    if gain > best_gain:
+                        best_gain = gain
+                        best_candidates = [(move_value, nx, ny, covered)]
+                    elif gain == best_gain:
+                        best_candidates.append((move_value, nx, ny, covered))
+
+        if best_gain <= 0 or not best_candidates:
             continue
 
-        nx, ny = best_pos
+        if len(markers) == 0:
+            continue
+
+        repair_ratio = best_gain / len(markers)
+        if repair_ratio < MIN_REPAIR_COVERAGE_RATIO:
+            continue
+
+        chosen = choose_candidate_by_average_move(best_candidates)
+        if chosen is None:
+            continue
+
+        _, nx, ny, best_cover = chosen
         repaired.append((nx, ny, ix, iy))
 
-        covered = build_cover_set_for_cell(nx, ny, markers)
-        uncovered_now -= covered
+        uncovered_now -= best_cover
 
         if not uncovered_now:
             break
@@ -308,41 +436,46 @@ def evaluate_phase(
 ):
     cells, group_cols, group_rows = generate_grid_with_indices(green_rect, dx=dx, dy=dy)
 
-    good: List[Tuple[float, float, int, int]] = []
-    bad: List[Tuple[float, float, int, int]] = []
-
-    for cx, cy, ix, iy in cells:
-        if not rect_intersects_polygon(cx, cy, blue_poly):
-            continue
-
-        if point_in_polygon((cx, cy), orange_poly):
-            bad.append((cx, cy, ix, iy))
-        else:
-            good.append((cx, cy, ix, iy))
-
-    # 1) Greedy select GOOD cells
-    selected_good, uncovered = greedy_select_cells(good, markers)
-
-    # 2) Repair BAD cells by moving right/up with fine steps
-    selected_bad_moved, uncovered2 = repair_bad_cells(
-        bad_cells=bad,
-        uncovered=uncovered,
-        markers=markers,
+    # --------------------------------------------------------
+    # Classify cells into GOOD / BAD only
+    # --------------------------------------------------------
+    good, bad = classify_cells(
+        cells=cells,
         orange_poly=orange_poly,
         blue_poly=blue_poly
     )
 
-    selected_all = selected_good + selected_bad_moved
+    # --------------------------------------------------------
+    # 1) Greedy select GOOD cells
+    # --------------------------------------------------------
+    selected_good, uncovered = greedy_select_cells(good, markers)
+
+    # --------------------------------------------------------
+    # 2) Repair BAD cells
+    # --------------------------------------------------------
+    selected_bad, uncovered_final = repair_bad_cells(
+        bad_cells=bad,
+        uncovered=uncovered,
+        markers=markers,
+        orange_poly=orange_poly,
+        green_rect=green_rect,
+        blue_poly=blue_poly
+    )
+
+    selected_all = selected_good + selected_bad
+
     coverage = 1.0
     if markers:
-        coverage = 1.0 - (len(uncovered2) / len(markers))
+        coverage = 1.0 - (len(uncovered_final) / len(markers))
 
     return {
         "dx": dx,
         "dy": dy,
         "coverage": coverage,
         "selected": selected_all,
-        "uncovered_idx": uncovered2,
+        "selected_good": selected_good,
+        "selected_bad": selected_bad,
+        "uncovered_idx": uncovered_final,
         "group_rows": group_rows,
         "group_cols": group_cols
     }
@@ -358,7 +491,8 @@ def find_best_phase(
     dx_list = [i for i in frange(0.0, CELL_W - 1e-9, phase_step)]
     dy_list = [i for i in frange(0.0, CELL_H - 1e-9, phase_step)]
 
-    best = None
+    best: Optional[Dict] = None
+
     for dy in dy_list:
         for dx in dx_list:
             result = evaluate_phase(green_rect, orange_poly, blue_poly, markers, dx, dy)
@@ -373,14 +507,10 @@ def find_best_phase(
                 if len(result["selected"]) < len(best["selected"]):
                     best = result
 
+    if best is None:
+        raise RuntimeError("No valid phase was evaluated.")
+
     return best
-
-
-def frange(start: float, stop: float, step: float):
-    x = start
-    while x <= stop + 1e-9:
-        yield x
-        x += step
 
 
 # ============================================================
@@ -423,60 +553,3 @@ def plot_scene(
     if title:
         ax.set_title(title)
     plt.show()
-
-
-# ============================================================
-# Main
-# ============================================================
-
-if __name__ == "__main__":
-
-    green_rect = [
-        (0, 0),
-        (800, 0),
-        (800, 600),
-        (0, 600)
-    ]
-
-    orange_poly = [
-        (80, 600),
-        (150, 600),
-        (250, 380),
-        (640, 380),
-        (640, 160),
-        (260, 160),
-        (140, 300)
-    ]
-
-    blue_poly = [
-        (160, 600),
-        (600, 600),
-        (600, 380),
-        (250, 380)
-    ]
-
-    # 1) Marker points (2m x 2m) inside blue
-    markers = sample_markers_in_blue(blue_poly, step=MARKER_STEP)
-    print(f"Markers (2m step) inside blue: {len(markers)}")
-
-    # 2) Find best global phase (dx, dy) + repair bad cells
-    best = find_best_phase(green_rect, orange_poly, blue_poly, markers, phase_step=PHASE_STEP)
-
-    dx = best["dx"]
-    dy = best["dy"]
-    coverage = best["coverage"]
-    selected = best["selected"]
-    uncovered_idx = best["uncovered_idx"]
-
-    print(f"Best phase: dx={dx:.1f} m, dy={dy:.1f} m")
-    print(f"Coverage (marker-based): {coverage * 100:.2f}%")
-    print(f"Selected rectangles: {len(selected)}")
-    print(f"Uncovered markers: {len(uncovered_idx)}")
-
-    plot_scene(
-        green_rect, orange_poly, blue_poly,
-        selected_cells=selected,
-        markers=markers,
-        uncovered_idx=uncovered_idx,
-        title=f"Rect {CELL_W}x{CELL_H} | markers=2m | dx={dx:.1f}, dy={dy:.1f} | cov={coverage*100:.2f}% | n={len(selected)}"
-    )
