@@ -8,11 +8,18 @@ from zuobiaoxi import (
     build_custom_frame,
 )
 
+from path_planner import (
+    plan_full_route,
+    print_route_summary,
+    plot_route_result,
+)
+
 # ============================================================
 # Geographic conversion helpers
 # ============================================================
 
 EARTH_RADIUS_M = 6378137.0
+
 
 def geo_to_local(lat: float, lon: float, lat0: float, lon0: float):
     """
@@ -119,9 +126,7 @@ def main():
     ]
 
     # --------------------------------------------------------
-    # NEW: Convert all polygons into the custom XY frame first
-    # X-axis = point_1_exact -> point_2_exact
-    # Y-axis = perpendicular, positive toward the north-ish side
+    # Convert all polygons into the custom XY frame first
     # --------------------------------------------------------
 
     green_rect = geo_to_custom_xy(green_geo, point_1_exact, point_2_exact)
@@ -129,7 +134,7 @@ def main():
     blue_poly = geo_to_custom_xy(blue_geo, point_1_exact, point_2_exact)
 
     # --------------------------------------------------------
-    # Run the existing planner in the custom metric coordinates
+    # Run the existing planner in custom metric coordinates
     # --------------------------------------------------------
 
     markers = sample_markers_in_blue(blue_poly, step=MARKER_STEP)
@@ -147,29 +152,27 @@ def main():
     dy = best["dy"]
     coverage = best["coverage"]
     selected = best["selected"]
+    selected_good = best["selected_good"]
+    selected_bad = best["selected_bad"]
     uncovered_idx = best["uncovered_idx"]
 
     print(f"Best phase: dx={dx:.1f} m, dy={dy:.1f} m")
     print(f"Coverage (marker-based): {coverage * 100:.2f}%")
     print(f"Selected rectangles: {len(selected)}")
+    print(f"Selected GOOD cells: {len(selected_good)}")
+    print(f"Selected BAD/repair cells: {len(selected_bad)}")
     print(f"Uncovered markers: {len(uncovered_idx)}")
 
     # --------------------------------------------------------
-    # Extract local center points in the custom XY frame
+    # Original rectangle center output
     # --------------------------------------------------------
 
     center_points_local = [(cx, cy) for cx, cy, _, _ in selected]
-
-    # Optional sorting: top-to-bottom, then left-to-right
     center_points_local = sorted(center_points_local, key=lambda p: (-p[1], p[0]))
 
     print("\nFinal rectangle center points in custom local meters:")
     for i, (x, y) in enumerate(center_points_local, start=1):
         print(f"{i}: ({x:.2f}, {y:.2f})")
-
-    # --------------------------------------------------------
-    # Convert custom XY center points back to geographic coordinates
-    # --------------------------------------------------------
 
     center_points_geo = points_custom_to_geo(
         center_points_local,
@@ -181,11 +184,38 @@ def main():
     for i, (lat, lon) in enumerate(center_points_geo, start=1):
         print(f"{i}: ({lat:.7f}, {lon:.7f})")
 
-    print("\nPython list of geographic waypoints:")
+    print("\nPython list of geographic waypoints (rectangle centers only):")
     print(center_points_geo)
 
     # --------------------------------------------------------
-    # Plot in the custom metric coordinates
+    # New: path planning
+    # Use selected_good / selected_bad directly from demo result
+    # --------------------------------------------------------
+
+    route_result = plan_full_route(
+        good_cells=selected_good,
+        repair_cells=selected_bad,
+        protected_zone=orange_poly
+    )
+
+    print_route_summary(route_result)
+
+    final_route_local = route_result["final_route_points"]
+    final_route_geo = points_custom_to_geo(
+        final_route_local,
+        point_1_exact,
+        point_2_exact
+    )
+
+    print("\nFinal route points in geographic coordinates:")
+    for i, (lat, lon) in enumerate(final_route_geo, start=1):
+        print(f"{i}: ({lat:.7f}, {lon:.7f})")
+
+    print("\nPython list of final geographic route:")
+    print(final_route_geo)
+
+    # --------------------------------------------------------
+    # Plot 1: original selected rectangles
     # --------------------------------------------------------
 
     plot_scene(
@@ -198,7 +228,20 @@ def main():
         title=f"Rect {CELL_W}x{CELL_H} | dx={dx:.1f}, dy={dy:.1f} | cov={coverage * 100:.2f}% | n={len(selected)}"
     )
 
-    return center_points_geo
+    # --------------------------------------------------------
+    # Plot 2: route result
+    # --------------------------------------------------------
+
+    plot_route_result(
+        green_poly=green_rect,
+        orange_poly=orange_poly,
+        blue_poly=blue_poly,
+        good_cells=selected_good,
+        repair_cells=selected_bad,
+        result=route_result,
+    )
+
+    return final_route_geo
 
 
 if __name__ == "__main__":
