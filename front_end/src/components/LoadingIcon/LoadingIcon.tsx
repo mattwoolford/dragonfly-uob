@@ -32,7 +32,7 @@ export default function LoadingIcon({prompt = "Loading..."}: LoadingIconProps){
     return (
         <div className={"LoadingIcon"}>
             <Logo animateTimes={Infinity} />
-            <Activity mode={isMounted ? "visible" : "hidden"}>
+            <Activity mode={isMounted && !!prompt ? "visible" : "hidden"}>
                 <p><KeyboardEffect>{prompt}</KeyboardEffect></p>
             </Activity>
         </div>
