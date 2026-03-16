@@ -1,0 +1,32 @@
+@layer components {
+
+    .Map {
+
+        @apply w-full h-full min-h-100 rounded-2xl overflow-hidden;
+
+    }
+
+    /* Tint the tile layer with a navy-blue hue */
+    .Map .leaflet-tile-pane {
+        filter: hue-rotate(190deg) saturate(1.4) brightness(0.85);
+    }
+
+    /* Style the attribution control to match the dark theme */
+    .Map .leaflet-control-attribution {
+        background: var(--color-content-background) !important;
+        color: var(--color-text) !important;
+    }
+
+    /* Zoom controls — navy background, red hover */
+    .Map .leaflet-control-zoom a {
+        background: var(--color-content-background) !important;
+        color: var(--color-white) !important;
+        border-color: var(--color-content-background) !important;
+    }
+
+    .Map .leaflet-control-zoom a:hover {
+        background: var(--color-highlight) !important;
+        color: var(--color-white) !important;
+    }
+
+}
