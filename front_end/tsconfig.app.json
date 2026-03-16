@@ -8,6 +8,9 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
     "paths": {
+      "@apis/*": [
+        "./src/apis/*"
+      ],
       "@assets/*": [
         "./src/assets/*"
       ],
