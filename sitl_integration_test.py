@@ -12,6 +12,7 @@ Requirements / 依赖:
 
 Tested with / 测试环境: pymavlink + ArduPilot SITL via Mission Planner
 """
+
 import asyncio
 import time
 from navigation_test2 import NavigationInterface, DroneState
@@ -139,6 +140,7 @@ async def test_goto_live(nav: NavigationInterface):
     # Arm + Takeoff
     print("    正在 arm 并 takeoff / Arming and taking off...")
     ok = await nav.arm_and_takeoff(TAKEOFF_REL_ALT)
+
     if not ok:
         print("    SKIP: arm 失败，跳过飞行测试 / arm failed, skipping flight test")
         return
