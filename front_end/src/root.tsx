@@ -1,15 +1,9 @@
-import {
-  isRouteErrorResponse,
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration
-} from "react-router";
+import {isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration} from "react-router";
 
-import type { Route } from "./+types/root";
+import type {Route} from "./+types/root";
 import "./index.css";
-import Page           from "@utils/components/Page/Page.tsx";
+import Page from "@utils/components/Page/Page.tsx";
+import WebSocketAPI from "@apis/WebSocketAPI.tsx";
 
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -40,9 +34,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <Page>
-          {children}
-        </Page>
+        <WebSocketAPI>
+          <Page>
+            {children}
+          </Page>
+        </WebSocketAPI>
         <ScrollRestoration />
         <Scripts />
       </body>
