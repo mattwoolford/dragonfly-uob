@@ -1,6 +1,7 @@
 import math
 from typing import List, Tuple, Dict, Optional
 import matplotlib.pyplot as plt
+from demo import CELL_W, CELL_H
 
 Point = Tuple[float, float]
 Polygon = List[Point]
@@ -103,13 +104,12 @@ def segment_crosses_polygon(a: Point, b: Point, polygon: Polygon) -> bool:
 
 
 # ============================================================
-# Good route: fixed 3x4 main-path pattern
+# Good route
 # ============================================================
 
 def choose_center_cell(good_cells: List[Cell]) -> Cell:
     """
-    Keep this helper for compatibility.
-    For the fixed 3x4 pattern, the start cell is used as the main reference cell.
+    Kept for compatibility with any external code that may still call it.
     """
     if not good_cells:
         raise ValueError("good_cells is empty.")
@@ -123,99 +123,82 @@ def choose_center_cell(good_cells: List[Cell]) -> Cell:
     )
 
 
-def build_good_grid_map(good_cells: List[Cell], tol: float = 1e-6) -> Dict[Tuple[int, int], Cell]:
+def choose_rightmost_bottom_cell(good_cells: List[Cell]) -> Cell:
     """
-    Build user-style grid coordinates:
-    - bottom-left is (1,1)
-    - x increases to the right
-    - y increases upward
-
-    This is based on actual cell center coordinates, not demo ix/iy.
+    Start cell rule:
+    - choose the rightmost good cell
+    - if tied, choose the bottommost one among them
     """
     if not good_cells:
-        return {}
+        raise ValueError("good_cells is empty.")
 
-    xs = sorted({round(c[0], 6) for c in good_cells})
-    ys = sorted({round(c[1], 6) for c in good_cells})
-
-    x_to_col = {x: i + 1 for i, x in enumerate(xs)}
-    y_to_row = {y: i + 1 for i, y in enumerate(ys)}
-
-    grid_map: Dict[Tuple[int, int], Cell] = {}
-    for cell in good_cells:
-        cx, cy, ix, iy = cell
-        col = x_to_col[round(cx, 6)]
-        row = y_to_row[round(cy, 6)]
-        grid_map[(col, row)] = cell
-
-    return grid_map
+    return max(good_cells, key=lambda c: (c[0], -c[1]))
 
 
-def build_fixed_3x4_good_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell]:
+def quantize_column(x: float) -> int:
     """
-    Fixed main-path pattern required by user for the current 3x4 good-cell rectangle:
+    Convert a cell center x into a logical column index.
+    This keeps the logic synchronized with current CELL_W.
+    """
+    return int(round(x / CELL_W))
 
-        start at (3,2)
-        -> (3,3)
-        -> (4,3)
-        -> (4,2)
-        -> (4,1)
-        -> (3,1)
-        -> (2,1)
-        -> (1,1)
-        -> (1,2)
-        -> (1,3)
-        -> (2,3)
-        -> (2,2)
 
-    Grid definition:
-    - bottom-left is (1,1)
+def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell]:
+    """
+    Build the good main route using the new rule:
+
+    - start from the rightmost-bottom good cell
+    - group cells by column
+    - visit columns from right to left
+    - first column:  bottom -> top
+    - second column: top -> bottom
+    - third column:  bottom -> top
+    - ...
+
+    This guarantees all good cells are included.
     """
     if not good_cells:
         return [], None  # type: ignore
 
-    grid_map = build_good_grid_map(good_cells)
+    # Group cells by logical column
+    columns: Dict[int, List[Cell]] = {}
+    for cell in good_cells:
+        cx, cy, ix, iy = cell
+        col_id = quantize_column(cx)
+        if col_id not in columns:
+            columns[col_id] = []
+        columns[col_id].append(cell)
 
-    cols = sorted({k[0] for k in grid_map.keys()})
-    rows = sorted({k[1] for k in grid_map.keys()})
-
-    if len(cols) != 4 or len(rows) != 3 or len(grid_map) != 12:
-        raise ValueError(
-            "Current fixed main-path logic requires exactly a 3x4 good-cell rectangle "
-            "(4 columns x 3 rows = 12 good cells)."
-        )
-
-    required_order = [
-        (3, 2),
-        (3, 3),
-        (4, 3),
-        (4, 2),
-        (4, 1),
-        (3, 1),
-        (2, 1),
-        (1, 1),
-        (1, 2),
-        (1, 3),
-        (2, 3),
-        (2, 2),
-    ]
+    # Columns: right -> left
+    sorted_col_ids = sorted(columns.keys(), reverse=True)
 
     ordered: List[Cell] = []
-    for key in required_order:
-        if key not in grid_map:
-            raise ValueError(f"Missing good cell at grid position {key}.")
-        ordered.append(grid_map[key])
 
-    center_cell = grid_map[(3, 2)]
-    return ordered, center_cell
+    for i, col_id in enumerate(sorted_col_ids):
+        col_cells = columns[col_id]
+
+        # y small -> bottom, y large -> top
+        col_cells_sorted = sorted(col_cells, key=lambda c: c[1])
+
+        if i % 2 == 0:
+            # 1st, 3rd, 5th... column: bottom -> top
+            ordered.extend(col_cells_sorted)
+        else:
+            # 2nd, 4th, 6th... column: top -> bottom
+            ordered.extend(reversed(col_cells_sorted))
+
+    start_cell = ordered[0]
+    return ordered, start_cell
 
 
 def build_center_out_good_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell]:
     """
-    Keep the original function name so main.py and downstream code do not need changes.
-    Internally, use the user's fixed 3x4 main-path pattern.
+    Kept under the old function name for compatibility with plan_full_route().
+    New rule:
+    - start from the rightmost-bottom good cell
+    - move in a vertical snake / zigzag pattern across all good cells
     """
-    return build_fixed_3x4_good_route(good_cells)
+    return build_vertical_snake_route(good_cells)
 
 
 # ============================================================
@@ -250,8 +233,8 @@ def is_horizontal_step(a: Point, b: Point) -> bool:
 def candidate_in_direction_strip(current: Point, target_main: Point, candidate: Point) -> bool:
     """
     User rule:
-    - if moving left/right, standard unit = 40 m
-    - if moving up/down,   standard unit = 30 m
+    - if moving left/right, standard unit = CELL_W
+    - if moving up/down,   standard unit = CELL_H
 
     Candidate must:
     - have absolute projection within the A-B length
@@ -262,9 +245,9 @@ def candidate_in_direction_strip(current: Point, target_main: Point, candidate: 
         return False
 
     if is_horizontal_step(current, target_main):
-        standard_unit = 40.0
+        standard_unit = CELL_W
     else:
-        standard_unit = 30.0
+        standard_unit = CELL_H
 
     if abs(proj) > main_len + 1e-9:
         return False
@@ -382,7 +365,7 @@ def plan_full_route(
         if segment_crosses_polygon(final_route[-1], b, protected_zone):
             raise ValueError(
                 f"Main segment crosses protected zone: {final_route[-1]} -> {b}\n"
-                f"Current center-out route needs further adjustment."
+                f"Current snake main route needs further adjustment."
             )
 
         final_route.append(b)
@@ -415,7 +398,7 @@ def print_route_summary(result: Dict) -> None:
     print("\n========== PATH PLANNING RESULT ==========")
     if center_cell is not None:
         print(
-            f"Chosen center cell: "
+            f"Chosen start cell: "
             f"(x={center_cell[0]:.2f}, y={center_cell[1]:.2f}, ix={center_cell[2]}, iy={center_cell[3]})"
         )
 
@@ -501,7 +484,7 @@ def plot_route_result(
     plt.axis("equal")
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
-    plt.title("Fixed 3x4 Good Route + Repair Insertion")
+    plt.title("Vertical Snake Good Route + Repair Insertion")
     plt.legend()
     plt.grid(True)
     plt.show()
