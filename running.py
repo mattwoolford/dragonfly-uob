@@ -94,7 +94,7 @@ def points_custom_to_geo(points_custom, point1_geo, point2_geo):
 # Main
 # ============================================================
 
-def main():
+def running():
     # --------------------------------------------------------
     # Input polygons from the KML file
     # Format: (latitude, longitude)
@@ -245,4 +245,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    running()
