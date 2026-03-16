@@ -14,8 +14,10 @@ import {
 } from "react";
 import {
     animate,
+    type AnimationOptions,
     type AnimationPlaybackControls,
-    delay
+    delay,
+    type DOMKeyframesDefinition
 } from "motion";
 
 
@@ -44,32 +46,48 @@ export default function KeyboardEffect({ children: text = "", onComplete: onAnim
     const cursorRef = useRef<HTMLDivElement | null>(null);
     const textSchedule = useRef<VoidFunction | null>(null);
 
+    // Define cursor animation
+    const cursorAnimationKeyframes = {
+        opacity: [1, 1, 0, 0],
+    } satisfies DOMKeyframesDefinition;
+    const cursorAnimationOptions = {
+        duration: 0.4,
+        ease: "linear",
+        times: [0, 0.5, 0.5, 1],
+        repeatType: "reverse"
+    } satisfies AnimationOptions;
+
     // Hide the cursor
-    const hideCursor = () => {
-        cursorRef.current!.style.opacity = "0";
-    };
+    const hideCursor = useCallback(() => {
+        cursorAnimation.current = animate(
+            cursorRef.current!,
+            cursorAnimationKeyframes,
+            {
+                ...cursorAnimationOptions,
+                repeat: 0
+            }
+        );
+        cursorAnimation.current.finished.then(() => {
+            cursorAnimation.current?.cancel();
+        });
+    }, [cursorAnimationKeyframes, cursorAnimationOptions]);
 
     // Start animating the cursor
     const startCursorAnimation = useCallback((onComplete?: VoidFunction, leaveOn: boolean = false) => {
         if(prefersReducedMotion) return;
         cursorAnimation.current = animate(
             cursorRef.current!,
+            cursorAnimationKeyframes,
             {
-                opacity: [1, 1, 0, 0],
-            },
-            {
-                duration: 0.4,
-                ease: "linear",
-                times: [0, 0.5, 0.5, 1],
-                repeat: leaveOn ? 5 : 6,
-                repeatType: "reverse"
+                ...cursorAnimationOptions,
+                repeat: leaveOn ? 5 : 6
             }
         );
         cursorAnimation.current.finished.then(() => {
             cursorAnimation.current?.cancel();
             onComplete?.();
         });
-    }, [prefersReducedMotion]);
+    }, [cursorAnimationKeyframes, cursorAnimationOptions, prefersReducedMotion]);
 
     // Queue letters to type when the text changes
     useEffect(() => {
@@ -128,7 +146,7 @@ export default function KeyboardEffect({ children: text = "", onComplete: onAnim
             textSchedule.current = null;
         }
 
-    }, [displayText, onAnimationComplete, showEndCursor, showStartCursor, startCursorAnimation, text, typingSpeed]);
+    }, [displayText, hideCursor, onAnimationComplete, showEndCursor, showStartCursor, startCursorAnimation, text, typingSpeed]);
 
 
     // Render
