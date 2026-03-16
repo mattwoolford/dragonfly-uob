@@ -130,6 +130,19 @@ class NavigationInterface:
             if self._telemetry["lat"] is None:
                 continue
             try:
+                # R05: 飞行中实时位置安全检查（防大风漂移越界）
+                # In-flight position safety check (wind drift detection)
+                cur_lat = self._telemetry["lat"]
+                cur_lon = self._telemetry["lon"]
+                cur_alt = self._telemetry["alt"] or 0.0
+                pos_safe, pos_reason = self.check_safety(cur_lat, cur_lon, cur_alt)
+                if not pos_safe:
+                    print(f"[警告/WARN] 当前位置违规 ({pos_reason})，自动取消任务！"
+                          f" / Current position unsafe ({pos_reason}), auto-cancelling mission!")
+                    await self.cancel()
+                    self._set_state(DroneState.ERROR, f"WIND_DRIFT: {pos_reason}")
+                    continue
+
                 dist = await self.get_distance_to_target(self._target["lat"], self._target["lon"])
                 self._mission["current_dist"] = dist
                 start = self._mission["start_dist"]
@@ -186,6 +199,7 @@ class NavigationInterface:
             return False
 
     # -----------------------------------------------------------------------
+
     # 地理围栏安全检查 / Geofence safety check
     # -----------------------------------------------------------------------
     def check_safety(self, lat, lon, alt):
