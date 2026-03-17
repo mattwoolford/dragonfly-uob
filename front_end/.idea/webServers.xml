@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="4be4c330-b376-46ce-b448-570f85a62d17" name="DragonFly Drone">
+        <fileTransfer accessType="SFTP" host="dragonfly.local" port="22" sshConfigId="af6b92a9-b36d-45b7-b297-02172006b586" sshConfig="flightlab-user@dragonfly.local:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
