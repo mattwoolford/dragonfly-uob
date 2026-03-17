@@ -160,7 +160,6 @@ def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell
     if not good_cells:
         return [], None  # type: ignore
 
-    # Group cells by logical column
     columns: Dict[int, List[Cell]] = {}
     for cell in good_cells:
         cx, cy, ix, iy = cell
@@ -169,22 +168,17 @@ def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell
             columns[col_id] = []
         columns[col_id].append(cell)
 
-    # Columns: right -> left
     sorted_col_ids = sorted(columns.keys(), reverse=True)
 
     ordered: List[Cell] = []
 
     for i, col_id in enumerate(sorted_col_ids):
         col_cells = columns[col_id]
-
-        # y small -> bottom, y large -> top
-        col_cells_sorted = sorted(col_cells, key=lambda c: c[1])
+        col_cells_sorted = sorted(col_cells, key=lambda c: c[1])  # bottom -> top
 
         if i % 2 == 0:
-            # 1st, 3rd, 5th... column: bottom -> top
             ordered.extend(col_cells_sorted)
         else:
-            # 2nd, 4th, 6th... column: top -> bottom
             ordered.extend(reversed(col_cells_sorted))
 
     start_cell = ordered[0]
@@ -208,6 +202,13 @@ def build_center_out_good_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cel
 def projection_and_offset(current: Point, target_main: Point, candidate: Point) -> Tuple[float, float, float]:
     """
     Projection / offset relative to current -> target_main.
+
+    Returns:
+        proj     : signed projection along current -> target_main
+                   same direction = positive
+                   opposite direction = negative
+        offset   : absolute lateral offset from the main segment direction
+        main_len : length of current -> target_main
     """
     d_main = sub(target_main, current)
     d_cand = sub(candidate, current)
@@ -232,13 +233,15 @@ def is_horizontal_step(a: Point, b: Point) -> bool:
 
 def candidate_in_direction_strip(current: Point, target_main: Point, candidate: Point) -> bool:
     """
-    User rule:
-    - if moving left/right, standard unit = CELL_W
-    - if moving up/down,   standard unit = CELL_H
+    Candidate must stay within the directional strip.
 
-    Candidate must:
-    - have absolute projection within the A-B length
-    - stay within the strip offset
+    New rule:
+    - projection keeps its sign:
+        same direction  -> positive
+        opposite dir    -> negative
+    - both forward and backward candidates are allowed here
+    - but candidate must stay within one A-B length in signed projection
+    - and within the strip width
     """
     proj, offset, main_len = projection_and_offset(current, target_main, candidate)
     if main_len < 1e-9:
@@ -249,7 +252,7 @@ def candidate_in_direction_strip(current: Point, target_main: Point, candidate: 
     else:
         standard_unit = CELL_H
 
-    if abs(proj) > main_len + 1e-9:
+    if proj < -main_len - 1e-9 or proj > main_len + 1e-9:
         return False
 
     if offset > standard_unit + 1e-9:
@@ -265,9 +268,16 @@ def choose_next_repair(
     protected_zone: Polygon,
 ) -> Optional[Point]:
     """
-    Choose the cheapest legal next repair point.
+    Choose the next legal repair point.
+
+    Priority:
+    1. legal candidates inside the strip
+    2. same-direction candidates first (proj >= 0)
+    3. among same-direction candidates, choose the nearest
+    4. if none exists, allow opposite-direction candidates
     """
-    legal: List[Point] = []
+    same_direction: List[Tuple[float, float, Point]] = []
+    opposite_direction: List[Tuple[float, float, Point]] = []
 
     for r in unvisited_repairs:
         if not candidate_in_direction_strip(current, target_main, r):
@@ -279,13 +289,23 @@ def choose_next_repair(
         if segment_crosses_polygon(r, target_main, protected_zone):
             continue
 
-        legal.append(r)
+        proj, offset, main_len = projection_and_offset(current, target_main, r)
+        d = dist(current, r)
 
-    if not legal:
-        return None
+        if proj >= -1e-9:
+            same_direction.append((d, proj, r))
+        else:
+            opposite_direction.append((d, abs(proj), r))
 
-    legal.sort(key=lambda r: dist(current, r))
-    return legal[0]
+    if same_direction:
+        same_direction.sort(key=lambda item: (item[0], item[1]))
+        return same_direction[0][2]
+
+    if opposite_direction:
+        opposite_direction.sort(key=lambda item: (item[0], item[1]))
+        return opposite_direction[0][2]
+
+    return None
 
 
 def expand_segment_with_repairs(
@@ -298,8 +318,10 @@ def expand_segment_with_repairs(
     Expand one main segment A -> B into:
         A -> R1 -> R2 -> ... -> B
 
-    Stop rule:
-    - if next repair costs more than going directly to B, stop.
+    Main logic remains the same:
+    - repeatedly insert the next best legal repair point
+    - stop when no legal repair point remains
+    - stop when the chosen repair is much more expensive than going to B
     """
     chain: List[Point] = []
     current = a
@@ -309,7 +331,7 @@ def expand_segment_with_repairs(
         if best_r is None:
             break
 
-        if dist(current, best_r) > dist(current, b) + 1e-9:
+        if dist(current, best_r) > 1.5 * dist(current, b) + 1e-9:
             break
 
         chain.append(best_r)
@@ -317,6 +339,29 @@ def expand_segment_with_repairs(
         current = best_r
 
     return chain, unvisited_repairs
+
+
+def choose_any_legal_leftover_repair(
+    current: Point,
+    unvisited_repairs: List[Point],
+    protected_zone: Polygon,
+) -> Optional[Point]:
+    """
+    After all main segments are processed, connect any remaining repair points
+    so that all repair points are eventually visited.
+    """
+    legal: List[Tuple[float, Point]] = []
+
+    for r in unvisited_repairs:
+        if segment_crosses_polygon(current, r, protected_zone):
+            continue
+        legal.append((dist(current, r), r))
+
+    if not legal:
+        return None
+
+    legal.sort(key=lambda item: item[0])
+    return legal[0][1]
 
 
 # ============================================================
@@ -350,6 +395,7 @@ def plan_full_route(
 
     final_route: List[Point] = [main_route_points[0]]
 
+    # Phase 1: insert repair points along each main segment
     for b in main_route_points[1:]:
         current_start = final_route[-1]
 
@@ -359,7 +405,9 @@ def plan_full_route(
 
         for r in repair_chain:
             if segment_crosses_polygon(final_route[-1], r, protected_zone):
-                raise ValueError(f"Inserted repair segment crosses protected zone: {final_route[-1]} -> {r}")
+                raise ValueError(
+                    f"Inserted repair segment crosses protected zone: {final_route[-1]} -> {r}"
+                )
             final_route.append(r)
 
         if segment_crosses_polygon(final_route[-1], b, protected_zone):
@@ -369,6 +417,22 @@ def plan_full_route(
             )
 
         final_route.append(b)
+
+    # Phase 2: append leftover repairs so that all repair points are visited
+    while unvisited_repairs:
+        current = final_route[-1]
+        next_r = choose_any_legal_leftover_repair(current, unvisited_repairs, protected_zone)
+
+        if next_r is None:
+            break
+
+        if segment_crosses_polygon(current, next_r, protected_zone):
+            raise ValueError(
+                f"Leftover repair connection crosses protected zone: {current} -> {next_r}"
+            )
+
+        final_route.append(next_r)
+        unvisited_repairs.remove(next_r)
 
     return {
         "center_cell": center_cell,
