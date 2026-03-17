@@ -1,5 +1,6 @@
 import math
 from demo import sample_markers_in_blue, find_best_phase, plot_scene, MARKER_STEP, PHASE_STEP, CELL_W, CELL_H
+from Aircraft import Aircraft
 
 from zuobiaoxi import (
     point_1_exact,
@@ -13,6 +14,104 @@ from path_planner import (
     print_route_summary,
     plot_route_result,
 )
+
+def search(aircraft, route_geo, altitude_m, tolerance_m=2.0, timeout_s=60):
+    """
+    Execute the search route waypoint by waypoint.
+
+    Args:
+        aircraft: An already-connected Aircraft instance from the upper layer.
+        route_geo: List of geographic waypoints [(lat, lon), ...].
+        altitude_m: Search altitude in metres.
+        tolerance_m: Arrival tolerance passed to aircraft.goto().
+        timeout_s: Timeout passed to aircraft.goto().
+
+    Returns:
+        dict with one of three statuses:
+        - "found": HITL confirmed a human at one waypoint
+        - "not_found": all waypoints were visited, no human confirmed
+        - "failed": aircraft.goto() failed before route completion
+    """
+    if not route_geo:
+        print("WARNING: Empty search route.")
+        return {
+            "status": "not_found",
+            "found": False,
+            "hit_index": None,
+            "hit_point": None,
+            "visited_count": 0,
+        }
+
+    total = len(route_geo)
+
+    for i, (lat, lon) in enumerate(route_geo, start=1):
+        print(f"\n[Search] Flying to waypoint {i}/{total}: ({lat:.7f}, {lon:.7f})")
+
+        ok = aircraft.goto(
+            lat,
+            lon,
+            altitude_m,
+            tolerance_m=tolerance_m,
+            timeout_s=timeout_s,
+        )
+
+        if not ok:
+            print(f"[Search] ERROR: goto failed at waypoint {i}/{total}. Aborting search.")
+            return {
+                "status": "failed",
+                "found": False,
+                "hit_index": None,
+                "hit_point": None,
+                "failed_index": i,
+                "failed_point": (lat, lon),
+                "visited_count": i - 1,
+            }
+
+        prompt = (
+            f"Waypoint {i}/{total} reached.\n"
+            f"Location: ({lat:.7f}, {lon:.7f})\n"
+            f"Is a human visible at this waypoint?\n"
+            f"Reply yes or no."
+        )
+
+        hit = Aircraft.ask_hitl(prompt)
+
+        if hit:
+            print(f"[Search] HITL confirmed a human at waypoint {i}/{total}.")
+            return {
+                "status": "found",
+                "found": True,
+                "hit_index": i,
+                "hit_point": (lat, lon),
+                "visited_count": i,
+            }
+
+        print(f"[Search] No human confirmed at waypoint {i}/{total}. Continuing.")
+
+    print("\n[Search] Route completed. No human confirmed.")
+    return {
+        "status": "not_found",
+        "found": False,
+        "hit_index": None,
+        "hit_point": None,
+        "visited_count": total,
+    }
+
+
+def search_current_area(aircraft, altitude_m, tolerance_m=2.0, timeout_s=60):
+    """
+    Convenience wrapper:
+    1. Generate the current search route from running()
+    2. Execute HITL search on that route
+    """
+    route_geo = running()
+    return search(
+        aircraft=aircraft,
+        route_geo=route_geo,
+        altitude_m=altitude_m,
+        tolerance_m=tolerance_m,
+        timeout_s=timeout_s,
+    )
 
 # ============================================================
 # Geographic conversion helpers
@@ -244,4 +343,10 @@ def running():
 
 
 if __name__ == "__main__":
-    running()
+    aircraft = ...  # replace this with the aircraft object provided by your upper-level code
+
+    route_geo = running()
+    result = search(aircraft, route_geo, altitude_m=50)
+
+    print("\nSearch result:")
+    print(result)
