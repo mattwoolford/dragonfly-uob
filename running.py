@@ -1,6 +1,5 @@
 import math
 from demo import sample_markers_in_blue, find_best_phase, plot_scene, MARKER_STEP, PHASE_STEP, CELL_W, CELL_H
-from Aircraft import Aircraft
 
 from zuobiaoxi import (
     point_1_exact,
@@ -14,104 +13,6 @@ from path_planner import (
     print_route_summary,
     plot_route_result,
 )
-
-def search(aircraft, route_geo, altitude_m, tolerance_m=2.0, timeout_s=60):
-    """
-    Execute the search route waypoint by waypoint.
-
-    Args:
-        aircraft: An already-connected Aircraft instance from the upper layer.
-        route_geo: List of geographic waypoints [(lat, lon), ...].
-        altitude_m: Search altitude in metres.
-        tolerance_m: Arrival tolerance passed to aircraft.goto().
-        timeout_s: Timeout passed to aircraft.goto().
-
-    Returns:
-        dict with one of three statuses:
-        - "found": HITL confirmed a human at one waypoint
-        - "not_found": all waypoints were visited, no human confirmed
-        - "failed": aircraft.goto() failed before route completion
-    """
-    if not route_geo:
-        print("WARNING: Empty search route.")
-        return {
-            "status": "not_found",
-            "found": False,
-            "hit_index": None,
-            "hit_point": None,
-            "visited_count": 0,
-        }
-
-    total = len(route_geo)
-
-    for i, (lat, lon) in enumerate(route_geo, start=1):
-        print(f"\n[Search] Flying to waypoint {i}/{total}: ({lat:.7f}, {lon:.7f})")
-
-        ok = aircraft.goto(
-            lat,
-            lon,
-            altitude_m,
-            tolerance_m=tolerance_m,
-            timeout_s=timeout_s,
-        )
-
-        if not ok:
-            print(f"[Search] ERROR: goto failed at waypoint {i}/{total}. Aborting search.")
-            return {
-                "status": "failed",
-                "found": False,
-                "hit_index": None,
-                "hit_point": None,
-                "failed_index": i,
-                "failed_point": (lat, lon),
-                "visited_count": i - 1,
-            }
-
-        prompt = (
-            f"Waypoint {i}/{total} reached.\n"
-            f"Location: ({lat:.7f}, {lon:.7f})\n"
-            f"Is a human visible at this waypoint?\n"
-            f"Reply yes or no."
-        )
-
-        hit = Aircraft.ask_hitl(prompt)
-
-        if hit:
-            print(f"[Search] HITL confirmed a human at waypoint {i}/{total}.")
-            return {
-                "status": "found",
-                "found": True,
-                "hit_index": i,
-                "hit_point": (lat, lon),
-                "visited_count": i,
-            }
-
-        print(f"[Search] No human confirmed at waypoint {i}/{total}. Continuing.")
-
-    print("\n[Search] Route completed. No human confirmed.")
-    return {
-        "status": "not_found",
-        "found": False,
-        "hit_index": None,
-        "hit_point": None,
-        "visited_count": total,
-    }
-
-
-def search_current_area(aircraft, altitude_m, tolerance_m=2.0, timeout_s=60):
-    """
-    Convenience wrapper:
-    1. Generate the current search route from running()
-    2. Execute HITL search on that route
-    """
-    route_geo = running()
-    return search(
-        aircraft=aircraft,
-        route_geo=route_geo,
-        altitude_m=altitude_m,
-        tolerance_m=tolerance_m,
-        timeout_s=timeout_s,
-    )
 
 # ============================================================
 # Geographic conversion helpers
@@ -193,7 +94,7 @@ def points_custom_to_geo(points_custom, point1_geo, point2_geo):
 # Main
 # ============================================================
 
-def running():
+def running(plb_geo=None):
     # --------------------------------------------------------
     # Input polygons from the KML file
     # Format: (latitude, longitude)
@@ -206,22 +107,46 @@ def running():
         (51.42469179370701, -2.667060227266051),
     ]
 
-    orange_geo = [ (51.42353586816967, -2.671451754138619),
-                   (51.42215640321154, -2.669768242108598),
-                   (51.42267105383615, -2.667705438815299),
-                   (51.42335592245168, -2.668164601092489),
-                   (51.42286082606338, -2.670043418345824),
-                   (51.42326667015552, -2.670965419051837),
-                   (51.42356862274763, -2.671324297543731),
-                   ]
+    orange_geo = [
+        (51.42353586816967, -2.671451754138619),
+        (51.42215640321154, -2.669768242108598),
+        (51.42267105383615, -2.667705438815299),
+        (51.42335592245168, -2.668164601092489),
+        (51.42286082606338, -2.670043418345824),
+        (51.42326667015552, -2.670965419051837),
+        (51.42356862274763, -2.671324297543731),
+    ]
 
-    blue_geo = [
+    default_blue_geo = [
         (51.42326956502679, -2.670948345438704),
         (51.42287025017865, -2.670045428650557),
         (51.42336622593724, -2.668169295906676),
         (51.42421477437771, -2.668809768621569),
         (51.42354069739116, -2.671277780473196),
     ]
+
+    # --------------------------------------------------------
+    # Select blue search region
+    # - None: use default initial blue region
+    # - Otherwise: use incoming PLB polygon directly
+    # --------------------------------------------------------
+
+    if plb_geo is None:
+        blue_geo = default_blue_geo
+        print("\nUsing default initial blue search region.")
+    else:
+        if not isinstance(plb_geo, (list, tuple)):
+            raise TypeError("plb_geo must be a list or tuple of geographic points.")
+
+        if len(plb_geo) < 3:
+            raise ValueError("plb_geo must contain at least 3 geographic points.")
+
+        for p in plb_geo:
+            if not isinstance(p, (list, tuple)) or len(p) != 2:
+                raise ValueError("Each point in plb_geo must be a (lat, lon) pair.")
+
+        blue_geo = list(plb_geo)
+        print("\nUsing PLB-provided blue search region.")
 
     # --------------------------------------------------------
     # Convert all polygons into the custom XY frame first
@@ -286,7 +211,7 @@ def running():
     print(center_points_geo)
 
     # --------------------------------------------------------
-    # New: path planning
+    # Path planning
     # Use selected_good / selected_bad directly from demo result
     # --------------------------------------------------------
 
@@ -340,13 +265,3 @@ def running():
     )
 
     return final_route_geo
-
-
-if __name__ == "__main__":
-    aircraft = ...  # replace this with the aircraft object provided by your upper-level code
-
-    route_geo = running()
-    result = search(aircraft, route_geo, altitude_m=50)
-
-    print("\nSearch result:")
-    print(result)
