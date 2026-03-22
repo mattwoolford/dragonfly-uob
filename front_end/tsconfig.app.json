@@ -20,6 +20,9 @@
       "@routes/*": [
         "./src/routes/*"
       ],
+      "@socket": [
+        "./src/socket.ts"
+      ],
       "@styles/*": [
         "./src/styles/*"
       ],
