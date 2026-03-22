@@ -1,6 +1,7 @@
 /* /src/components styles */
 @import "../components/ContentContainer/ContentContainer.css";
 @import "../components/Header/Header.css";
+@import "../components/ImageCanvas/ImageCanvas.css";
 @import "../components/LoadingIcon/LoadingIcon.css";
 @import "../components/Map/Map.css";
 

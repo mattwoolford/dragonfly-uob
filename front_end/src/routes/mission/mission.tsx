@@ -8,12 +8,13 @@ import {
 }                       from "motion/react";
 import Console          from "@components/Console/Console.tsx";
 import Map              from "@components/Map/Map.client.tsx";
+import ImageCanvas      from "@components/ImageCanvas/ImageCanvas.client.tsx";
 
 
 export async function clientLoader() {
   const INTRO_TIME = 10000;
   await Promise.all([
-                      new Promise(resolve => setTimeout(resolve, INTRO_TIME)),
+                      // new Promise(resolve => setTimeout(resolve, INTRO_TIME)),
                     ]);
   return null;
 }
@@ -41,7 +42,9 @@ export default function Mission() {
                     <ContentContainer>
                         <Map pin={ DEFAULT_LOCATION_PIN } onMapClick={(lat, lng) => console.log(`Clicked: ${lat}, ${lng}`)} />
                     </ContentContainer>
-                    <ContentContainer />
+                    <ContentContainer>
+                        <ImageCanvas />
+                    </ContentContainer>
                     <Console />
                 </LayoutGroup>
             </motion.section>
