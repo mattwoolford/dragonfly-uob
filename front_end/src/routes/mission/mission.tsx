@@ -8,12 +8,15 @@ import {
 }                       from "motion/react";
 import Console          from "@components/Console/Console.tsx";
 import Map              from "@components/Map/Map.client.tsx";
+import { useEffect }    from "react";
+import socket           from "@socket";
+import type { Socket }  from "socket.io-client";
 
 
 export async function clientLoader() {
   // TODO: Do setup here
   await Promise.all([
-                      new Promise(resolve => setTimeout(resolve, 10000))
+                      new Promise<Socket>(resolve => setTimeout(resolve, 10000)),
                     ]);
   return null;
 }
@@ -30,6 +33,12 @@ export function HydrateFallback() {
 export default function Mission() {
 
     const DEFAULT_LOCATION_PIN = [51.423967391658536, -2.67169820644399] satisfies [number, number];
+
+    useEffect(() => {
+
+        socket?.emit('message', {data: 'I\'m connected!'});
+
+    }, [socket]);
 
     return (
         <>
