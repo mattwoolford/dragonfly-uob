@@ -2,10 +2,12 @@
 @import "./styles/components.css";
 
 @theme {
+  --color-active: rgb(49, 182, 4);
   --color-background: rgb(20, 20, 27);
   --color-content-background: rgb(11, 38, 61);
   --color-highlight: rgb(198, 44, 44);
   --color-text: rgb(73, 119, 165);
+  --color-disabled: rgb(104, 108, 129);
 
   --font-mono: "Space Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
 

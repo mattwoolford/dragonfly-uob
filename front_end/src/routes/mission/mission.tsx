@@ -9,12 +9,18 @@ import {
 import Console          from "@components/Console/Console.tsx";
 import Map              from "@components/Map/Map.client.tsx";
 import ImageCanvas      from "@components/ImageCanvas/ImageCanvas.client.tsx";
+import {
+    useCallback,
+    useState
+}                       from "react";
+import clsx             from "clsx";
 
 
+// eslint-disable-next-line react-refresh/only-export-components
 export async function clientLoader() {
   const INTRO_TIME = 10000;
   await Promise.all([
-                      // new Promise(resolve => setTimeout(resolve, INTRO_TIME)),
+                      new Promise(resolve => setTimeout(resolve, INTRO_TIME)),
                     ]);
   return null;
 }
@@ -32,6 +38,25 @@ export default function Mission() {
 
     const DEFAULT_LOCATION_PIN = [51.423967391658536, -2.67169820644399] satisfies [number, number];
 
+    const [maximiseImage, setMaximiseImage] = useState<boolean>(false);
+
+    const handleImageLoad = useCallback(() => {
+        setMaximiseImage(true);
+    }, []);
+
+    const handleEndImageAssessment = useCallback(async (u?: number, v?: number) => {
+        console.log("Pixel click", u, v);
+        await new Promise<void>(resolve => setTimeout(() => {
+            setMaximiseImage(false);
+            resolve();
+        }, 500));
+    }, []);
+
+    const imageContainerCx = clsx(
+        !maximiseImage && "pointer-events-none",
+        maximiseImage && "pointer-events-auto"
+    );
+
     return (
         <>
             <section className={"px-4"}>
@@ -42,8 +67,8 @@ export default function Mission() {
                     <ContentContainer>
                         <Map pin={ DEFAULT_LOCATION_PIN } onMapClick={(lat, lng) => console.log(`Clicked: ${lat}, ${lng}`)} />
                     </ContentContainer>
-                    <ContentContainer>
-                        <ImageCanvas />
+                    <ContentContainer className={imageContainerCx} maximise={maximiseImage}>
+                        <ImageCanvas onImageLoad={handleImageLoad} onPixelSelection={handleEndImageAssessment} onCancel={handleEndImageAssessment} />
                     </ContentContainer>
                     <Console />
                 </LayoutGroup>

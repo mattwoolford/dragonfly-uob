@@ -1,4 +1,5 @@
 /* /src/components styles */
+@import "../components/Button/Button.css";
 @import "../components/ContentContainer/ContentContainer.css";
 @import "../components/Header/Header.css";
 @import "../components/ImageCanvas/ImageCanvas.css";

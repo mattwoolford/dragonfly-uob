@@ -1,0 +1,10 @@
+@layer components {
+    .Button {
+        @apply bg-transparent border-2 border-text text-text px-[1ex] py-[0.4em] rounded-md shadow-md cursor-pointer;
+    }
+
+    .Button[disabled] {
+        @apply border-disabled text-disabled cursor-not-allowed;
+    }
+
+}
