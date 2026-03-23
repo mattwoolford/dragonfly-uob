@@ -6,12 +6,16 @@ from pathlib import Path
 from flask import Flask
 from dotenv import load_dotenv
 
-from server.controllers.Mission import Mission
-from server.utils.env_flag import env_flag
+from controllers.Mission import Mission
+from utils.env_flag import env_flag
 
 for path in sorted(Path(".").glob(".env*")):
     if path.is_file():
         load_dotenv(path, override=True)
+
+
+mission: Mission | None = None
+
 app = Flask(__name__, static_folder="../front-end/dist")
 app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 
@@ -19,15 +23,24 @@ app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 socketio = SocketIO(app, cors_allowed_origins=os.getenv("FLASK_CORS_ALLOWED_ORIGINS").split(','))
 
 
-@socketio.on('message')
-def handle_message(data):
-    print('received message: ' + str(data))
+@socketio.on('pixel-coordinates-selected')
+def handle_message(payload):
+    global mission
+    if mission is None:
+        return
+    data = payload["data"]
+    u, v = data["u"], data["v"]
+    if u is None or v is None:
+        print("A target subject could not be found by the user")
+        return
+    mission.set_target_coordinates((data["u"], data["v"]))
 
 
 def start_mission() -> None:
     print("Starting mission")
     time.sleep(5)
     print("Mission started")
+    global mission
     mission = Mission(socketio_instance=socketio)
     mission.start()
 
