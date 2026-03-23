@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class Mission:
@@ -10,9 +10,14 @@ class Mission:
     """
 
     def __init__(self, socketio_instance=None):
-        self.socketio = socketio_instance
+        self.socketio = socketio_instance  # SocketIO instance
+        self.steps_queue = []  # Steps to be executed (list of methods)
+        self.target_coordinates = None  # Coordinates of SAR subject
 
-    def initiate_sockets(self, options: dict[str, Any] | None = None):
+    def add_step(self, next_step: Callable):
+        self.steps_queue.append(next_step)
+
+    def _initiate_sockets(self, options: dict[str, Any] | None = None):
         socketio_instance = options.get("socketio") or self.socketio
         if socketio_instance is None:
             from server.main import socketio as default_socketio
@@ -21,13 +26,30 @@ class Mission:
 
         return socketio_instance
 
-    def send_image_for_assessment(self, file_path):
+    def _send_image_for_assessment(self, file_path):
         with open(file_path, "rb") as f:
             image_bytes = f.read()
-            self.socketio.emit("image-inspection", {"data": {
-                "image": image_bytes
-            }})
+            self.socketio.emit("image-inspection", {
+                "data": {
+                    "image": image_bytes
+                }
+            })
 
+    def set_target_coordinates(self, coordinates: tuple[float, float]):
+        self.target_coordinates = coordinates
+        # TODO: Set next step to be geolocation from image
+        print(f"Target coordinates set to {coordinates}")
+
+    def next_step(self):
+        next = self.steps_queue.pop(0)
+        next()
+
+    # TODO: Replace with actual search module
+    def _search(self):
+        # TODO: Replace with image from search
+        BASE_DIR = Path(__file__).resolve().parent
+        file_path = f"{BASE_DIR}/../assets/test-image.png"
+        self._send_image_for_assessment(file_path)
 
     def start(self, options: dict[str, Any] | None = None):
         """
@@ -36,13 +58,11 @@ class Mission:
         Socket.IO options:
         - `socketio`: explicit Socket.IO instance to emit with
         """
-        options = options or {}
-        socketio = self.initiate_sockets(options)
 
-        BASE_DIR = Path(__file__).resolve().parent
+        options = options or { }
+        socketio = self._initiate_sockets(options)
 
-        # TODO: Replace with image from search
-        file_path = f"{BASE_DIR}/../assets/test-image.png"
-        self.send_image_for_assessment(file_path)
-
-
+        # TODO: Enter search loop
+        # while not self.target_coordinates:
+        self.add_step(self._search)
+        self.next_step()
