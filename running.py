@@ -133,7 +133,6 @@ def running(plb_geo=None):
 
     if plb_geo is None:
         blue_geo = default_blue_geo
-        print("\nUsing default initial blue search region.")
     else:
         if not isinstance(plb_geo, (list, tuple)):
             raise TypeError("plb_geo must be a list or tuple of geographic points.")
@@ -146,7 +145,6 @@ def running(plb_geo=None):
                 raise ValueError("Each point in plb_geo must be a (lat, lon) pair.")
 
         blue_geo = list(plb_geo)
-        print("\nUsing PLB-provided blue search region.")
 
     # --------------------------------------------------------
     # Convert all polygons into the custom XY frame first
@@ -161,7 +159,6 @@ def running(plb_geo=None):
     # --------------------------------------------------------
 
     markers = sample_markers_in_blue(blue_poly, step=MARKER_STEP)
-    print(f"Markers (2m step) inside blue: {len(markers)}")
 
     best = find_best_phase(
         green_rect=green_rect,
@@ -179,13 +176,6 @@ def running(plb_geo=None):
     selected_bad = best["selected_bad"]
     uncovered_idx = best["uncovered_idx"]
 
-    print(f"Best phase: dx={dx:.1f} m, dy={dy:.1f} m")
-    print(f"Coverage (marker-based): {coverage * 100:.2f}%")
-    print(f"Selected rectangles: {len(selected)}")
-    print(f"Selected GOOD cells: {len(selected_good)}")
-    print(f"Selected BAD/repair cells: {len(selected_bad)}")
-    print(f"Uncovered markers: {len(uncovered_idx)}")
-
     # --------------------------------------------------------
     # Original rectangle center output
     # --------------------------------------------------------
@@ -193,22 +183,11 @@ def running(plb_geo=None):
     center_points_local = [(cx, cy) for cx, cy, _, _ in selected]
     center_points_local = sorted(center_points_local, key=lambda p: (-p[1], p[0]))
 
-    print("\nFinal rectangle center points in custom local meters:")
-    for i, (x, y) in enumerate(center_points_local, start=1):
-        print(f"{i}: ({x:.2f}, {y:.2f})")
-
     center_points_geo = points_custom_to_geo(
         center_points_local,
         point_1_exact,
         point_2_exact
     )
-
-    print("\nFinal rectangle center points in geographic coordinates:")
-    for i, (lat, lon) in enumerate(center_points_geo, start=1):
-        print(f"{i}: ({lat:.7f}, {lon:.7f})")
-
-    print("\nPython list of geographic waypoints (rectangle centers only):")
-    print(center_points_geo)
 
     # --------------------------------------------------------
     # Path planning
@@ -221,47 +200,11 @@ def running(plb_geo=None):
         protected_zone=orange_poly
     )
 
-    print_route_summary(route_result)
-
     final_route_local = route_result["final_route_points"]
     final_route_geo = points_custom_to_geo(
         final_route_local,
         point_1_exact,
         point_2_exact
-    )
-
-    print("\nFinal route points in geographic coordinates:")
-    for i, (lat, lon) in enumerate(final_route_geo, start=1):
-        print(f"{i}: ({lat:.7f}, {lon:.7f})")
-
-    print("\nPython list of final geographic route:")
-    print(final_route_geo)
-
-    # --------------------------------------------------------
-    # Plot 1: original selected rectangles
-    # --------------------------------------------------------
-
-    plot_scene(
-        green_rect,
-        orange_poly,
-        blue_poly,
-        selected_cells=selected,
-        markers=markers,
-        uncovered_idx=uncovered_idx,
-        title=f"Rect {CELL_W}x{CELL_H} | dx={dx:.1f}, dy={dy:.1f} | cov={coverage * 100:.2f}% | n={len(selected)}"
-    )
-
-    # --------------------------------------------------------
-    # Plot 2: route result
-    # --------------------------------------------------------
-
-    plot_route_result(
-        green_poly=green_rect,
-        orange_poly=orange_poly,
-        blue_poly=blue_poly,
-        good_cells=selected_good,
-        repair_cells=selected_bad,
-        result=route_result,
     )
 
     return final_route_geo
