@@ -23,8 +23,36 @@ app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 socketio = SocketIO(app, cors_allowed_origins=os.getenv("FLASK_CORS_ALLOWED_ORIGINS").split(','))
 
 
+@socketio.on('get-assessment-image')
+def get_assessment_image():
+    global mission
+    if mission is None:
+        image = None
+    else:
+        image = mission.get_image_for_assessment()
+    return {
+        "data": {
+            "image": image
+        }
+    }
+
+
+@socketio.on('get-mission-status')
+def get_mission_status() -> dict:
+    global mission
+    if mission is None:
+        status = "Mission not started"
+    else:
+        status = mission.status
+    return {
+        "data": {
+            "missionStatus": status
+        }
+    }
+
+
 @socketio.on('pixel-coordinates-selected')
-def handle_message(payload):
+def handle_pixel_coordinates_selection(payload):
     global mission
     if mission is None:
         return
@@ -39,9 +67,9 @@ def handle_message(payload):
 def start_mission() -> None:
     print("Starting mission")
     time.sleep(5)
-    print("Mission started")
     global mission
     mission = Mission(socketio_instance=socketio)
+    print("Mission initialised")
     mission.start()
 
 

@@ -1,18 +1,20 @@
 import {
     type MouseEventHandler,
+    use,
     useCallback,
     useEffect,
     useRef,
     useState
-}                     from "react";
+}                                               from "react";
 import {
     AnimatePresence,
     motion
-}                     from "motion/react";
-import socket         from "../../socket";
-import Logo           from "@assets/logo/png/DragonFly Logo_Emblem.png";
-import Button         from "@components/Button/Button.tsx";
-import KeyboardEffect from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
+}                                               from "motion/react";
+import socket, { DEFAULT_TIMEOUT }              from "../../socket";
+import Logo                                     from "@assets/logo/png/DragonFly Logo_Emblem.png";
+import Button                                   from "@components/Button/Button.tsx";
+import KeyboardEffect                           from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
+import MissionStatusAPI, { type MissionStatus } from "@utils/contexts/MissionStatusAPI.ts";
 
 
 interface ImageCanvasProps {
@@ -52,6 +54,12 @@ export default function ImageCanvas({ socketEvent = "image-inspection", onCancel
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     // The dimensions of the image
     const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null);
+
+
+    // Context
+    const missionStatus = use(MissionStatusAPI);
+    const STATIC_MISSION_STATUSES: MissionStatus[] = ["Mission not started", "Target found", "Mission complete"];
+    const shouldBlinkMissionStatus = !!missionStatus && !STATIC_MISSION_STATUSES.includes(missionStatus);
 
 
     // Refs
@@ -130,7 +138,7 @@ export default function ImageCanvas({ socketEvent = "image-inspection", onCancel
     // Initialise socket, or if the socket event to listen for changes, update the socket listener
     useEffect(() => {
 
-        socket.on(socketEvent, (payload: ImageSocketPayload) => {
+        function handleImagePayload(payload: ImageSocketPayload){
             const imagePayload = payload.data.image;
 
             const blob = new Blob([imagePayload], { type: "image/jpeg" });
@@ -139,7 +147,18 @@ export default function ImageCanvas({ socketEvent = "image-inspection", onCancel
             setImageDimensions(null);
             setImageSrc(URL.createObjectURL(blob));
             setSubmitted(false);
+        }
+
+        socket.timeout(DEFAULT_TIMEOUT).emit('get-assessment-image', (err: Error, payload: ImageSocketPayload) => {
+            if (err) {
+                console.warn("Could not fetch current assessment image: Request timed out", err);
+            }
+            else {
+                return handleImagePayload(payload);
+            }
         });
+
+        socket.on(socketEvent, handleImagePayload);
 
         return () => {
             socket.off(socketEvent);
@@ -207,6 +226,7 @@ export default function ImageCanvas({ socketEvent = "image-inspection", onCancel
 
 
     // Render
+    // noinspection MagicNumberJS
     return (
         <div className={"ImageCanvas"}>
             <AnimatePresence>
@@ -232,7 +252,18 @@ export default function ImageCanvas({ socketEvent = "image-inspection", onCancel
                                               }}
                                   >
                                       <img className={"size-40"} src={Logo} alt={"DragonFly Logo"}/>
-                                      <p>Mission not started</p>
+                                      <motion.p
+                                          layout
+                                          layoutCrossfade={false}
+                                          animate={shouldBlinkMissionStatus ? { opacity: [1, 1, 0, 0], transition: {
+                                                  duration: 2,
+                                                  times: [0, 0.75, 0.75, 1],
+                                                  ease: "linear",
+                                                  repeat: Infinity
+                                              } } : { opacity: 1 }}
+                                      >
+                                          {missionStatus}
+                                      </motion.p>
                                   </motion.div>
                               )
                 }

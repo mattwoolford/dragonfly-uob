@@ -44,8 +44,7 @@ export default function Mission() {
         setMaximiseImage(true);
     }, []);
 
-    const handleEndImageAssessment = useCallback(async (u?: number, v?: number) => {
-        console.log("Pixel click", u, v);
+    const handleEndImageAssessment = useCallback(async (_u?: number, _v?: number) => {
         await new Promise<void>(resolve => setTimeout(() => {
             setMaximiseImage(false);
             resolve();
@@ -65,7 +64,7 @@ export default function Mission() {
             <motion.section className={"flex flex-row justify-between items-center gap-4 px-4 my-2 py-2 w-full min-h-100"}>
                 <LayoutGroup>
                     <ContentContainer>
-                        <Map pin={ DEFAULT_LOCATION_PIN } onMapClick={(lat, lng) => console.log(`Clicked: ${lat}, ${lng}`)} />
+                        <Map pin={ DEFAULT_LOCATION_PIN } />
                     </ContentContainer>
                     <ContentContainer className={imageContainerCx} maximise={maximiseImage}>
                         <ImageCanvas onImageLoad={handleImageLoad} onPixelSelection={handleEndImageAssessment} onCancel={handleEndImageAssessment} />
