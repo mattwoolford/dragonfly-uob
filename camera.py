@@ -115,3 +115,13 @@ def capture_and_upload_image(
     remote_image_path = f"{remote_dir.rstrip('/')}/{filename}"
 
     return str(local_image_path), remote_image_path
+
+def start(camera, filename, host_user, host_ip, remote_dir, desktop_folder_name="drone_images"):
+    return capture_and_upload_image(
+        camera=camera,
+        filename=filename,
+        host_user=host_user,
+        host_ip=host_ip,
+        remote_dir=remote_dir,
+        desktop_folder_name=desktop_folder_name
+    )
