@@ -16,6 +16,8 @@ for path in sorted(Path(".").glob(".env*")):
 
 mission: Mission | None = None
 
+from server.mission_modules.Delivery.Delivery import Delivery
+
 app = Flask(__name__, static_folder="../front-end/dist")
 app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 
