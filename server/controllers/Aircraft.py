@@ -9,6 +9,10 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
+    def __init__(self):
+        self.master = None
+        self.connected = False
+
     # ------------------------------------------
     # CONNECTION
     # ------------------------------------------
@@ -26,6 +30,7 @@ class Aircraft:
         if master.wait_heartbeat(timeout=10) is None:
             raise ConnectionError(f"No heartbeat received from {connection_string}. Is the FC running?")
         print("Heartbeat received.")
+        self.connected = True
 
         print("Requesting telemetry data streams...")
         master.mav.request_data_stream_send(
