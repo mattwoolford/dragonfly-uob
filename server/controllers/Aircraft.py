@@ -9,9 +9,6 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self, master):
-        self.master = master
-
     # ------------------------------------------
     # CONNECTION
     # ------------------------------------------
