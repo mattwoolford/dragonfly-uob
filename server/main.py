@@ -60,6 +60,7 @@ def handle_pixel_coordinates_selection(payload):
     u, v = data["u"], data["v"]
     if u is None or v is None:
         print("A target subject could not be found by the user")
+        mission.resume()
         return
     mission.set_target_coordinates((data["u"], data["v"]))
 
