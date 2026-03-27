@@ -292,31 +292,6 @@ class Aircraft:
             "path_to_image": path_to_image,
         }
 
-    def take_photo_with_position(self):
-        """
-        Capture one image, upload it to the host computer, and return
-        the aircraft position together with the image paths.
-        """
-        position = self.get_position()
-        if position is None:
-            raise RuntimeError("Failed to get aircraft position before taking photo.")
-
-        lat, lon, rel_alt, heading = position
-
-        camera_helper = Camera()
-        path_to_image = camera_helper.capture_and_save_image(
-            camera=self.camera,
-            save_dir_path=self.camera_image_save_directory
-        )
-
-        return {
-            "latitude": lat,
-            "longitude": lon,
-            "relative_altitude_m": rel_alt,
-            "heading": heading,
-            "path_to_image": path_to_image,
-        }
-
     def wait_until_reached(self, target_lat, target_lon, target_alt,
                            tolerance_m=2.0, timeout_s=60):
         """
