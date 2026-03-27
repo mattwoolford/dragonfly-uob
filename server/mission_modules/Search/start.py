@@ -1,4 +1,3 @@
-from server.interfaces.MissionModule import MissionModule
 from running import running
 from pathlib import Path
 import json
@@ -82,27 +81,53 @@ def _load_route():
 
 
 # ============================================================
-# Search Mission Module
+# Unified entry point
+# mode options:
+# - "reuse"    : return previous saved route
+# - "full"     : plan route for default full search area
+# - "plb"      : plan route for provided PLB area
+# - "plb_demo" : plan route for built-in example PLB area
 # ============================================================
 
-class Search(MissionModule):
+def start(mode="full", plb_geo=None, add_transit=True):
     """
-    This mission module implements a path plan methodology with waypoints
-    to search a field (and with the possible help of a PLB) so that the
-    mission can find the person in need of rescue.
+    Unified route entry.
+
+    Args:
+        mode:
+            "reuse"    -> load and return previous saved route
+            "full"     -> plan route for default full search area
+            "plb"      -> plan route for the provided PLB polygon
+            "plb_demo" -> plan route for the built-in example PLB polygon
+
+        plb_geo:
+            Required only when mode == "plb".
+            Format: list of (lat, lon)
+
+        add_transit:
+            If True, prepend fixed transit waypoints.
+            Usually useful for "full".
+
+    Returns:
+        route_geo: list of (lat, lon)
     """
 
-    def _validate_plb_geo(self, plb_geo):
-        """
-        Validate PLB polygon input.
-        """
+    if mode == "reuse":
+        return _load_route()
+
+    elif mode == "full":
+        planned_route_geo = running(plb_geo=None)
+        route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
+        _save_route(route_geo)
+        return route_geo
+
+    elif mode == "plb":
         if plb_geo is None:
-            raise ValueError("mode='plb' requires 'plb_geo' in options.")
+            raise ValueError("mode='plb' requires plb_geo input.")
 
         if not isinstance(plb_geo, (list, tuple)) or len(plb_geo) < 3:
             raise ValueError("plb_geo must be a list/tuple of at least 3 (lat, lon) points.")
 
-        validated = []
         for p in plb_geo:
             if not isinstance(p, (list, tuple)) or len(p) != 2:
                 raise ValueError("Each PLB point must be a (lat, lon) pair.")
@@ -111,72 +136,47 @@ class Search(MissionModule):
             if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
                 raise ValueError("Each PLB point must contain numeric lat/lon values.")
 
-            validated.append((float(lat), float(lon)))
+        planned_route_geo = running(plb_geo=plb_geo)
+        route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
+        _save_route(route_geo)
+        return route_geo
 
-        return validated
+    elif mode == "plb_demo":
+        planned_route_geo = running(plb_geo=EXAMPLE_PLB_GEO)
+        route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
+        _save_route(route_geo)
+        return route_geo
 
-    def start(self, options=None):
-        """
-        Start the mission module.
-
-        Expected options format:
-            {
-                "mode": "full" | "reuse" | "plb" | "plb_demo",
-                "plb_geo": [(lat, lon), ...],   # required only for mode="plb"
-                "add_transit": True | False     # optional, default True
-            }
-
-        Returns:
-            route_geo: list of (lat, lon)
-        """
-        if options is None:
-            options = {}
-
-        if not isinstance(options, dict):
-            raise TypeError("options must be a dictionary.")
-
-        mode = options.get("mode", "full")
-        plb_geo = options.get("plb_geo", None)
-        add_transit = options.get("add_transit", True)
-
-        if not isinstance(add_transit, bool):
-            raise ValueError("add_transit must be True or False.")
-
-        if mode == "reuse":
-            return _load_route()
-
-        elif mode == "full":
-            planned_route_geo = running(plb_geo=None)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
-
-        elif mode == "plb":
-            validated_plb_geo = self._validate_plb_geo(plb_geo)
-            planned_route_geo = running(plb_geo=validated_plb_geo)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
-
-        elif mode == "plb_demo":
-            planned_route_geo = running(plb_geo=EXAMPLE_PLB_GEO)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
-
-        else:
-            raise ValueError(
-                "Invalid mode. Use one of: 'reuse', 'full', 'plb', 'plb_demo'."
-            )
+    else:
+        raise ValueError(
+            "Invalid mode. Use one of: 'reuse', 'full', 'plb', 'plb_demo'."
+        )
 
 
 def main():
-    search = Search()
+    # --------------------------------------------------------
+    # Choose one of the following modes:
+    #
+    # 1) Reuse previous saved route:
+    # route_geo = start(mode="reuse")
+    #
+    # 2) Full search planning:
+    # route_geo = start(mode="full", add_transit=True)
+    #
+    # 3) Real PLB planning:
+    # real_plb_geo = [
+    #     (51.4236844, -2.6698843),
+    #     (51.4235388, -2.6689777),
+    #     (51.4232478, -2.6698118),
+    #     (51.4233465, -2.6700774),
+    # ]
+    # route_geo = start(mode="plb", plb_geo=real_plb_geo, add_transit=False)
+    #
+    # 4) Demo PLB planning:
+    # route_geo = start(mode="plb_demo", add_transit=False)
+    # --------------------------------------------------------
 
-    route_geo = search.start({
-        "mode": "full",
-        "add_transit": True
-    })
+    route_geo = start(mode="full", add_transit=True)
 
     print("\nRoute (geo):")
     for i, (lat, lon) in enumerate(route_geo, start=1):
