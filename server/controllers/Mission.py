@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable
+
+from server.controllers.Aircraft import Aircraft
 
 
 class Mission:
@@ -11,8 +14,9 @@ class Mission:
     This mission controller acts as a state machine that guides the aircraft through a search and rescue mission.
     """
 
-    def __init__(self, socketio_instance=None):
+    def __init__(self, aircraft: Aircraft, socketio_instance=None):
         self._assessment_image = None
+        self.aircraft = aircraft
         self.socketio = socketio_instance  # SocketIO instance
         self.set_status("Mission not started") # Initialise the mission status
         self.steps_queue = []  # Steps to be executed (list of methods)
@@ -79,7 +83,6 @@ class Mission:
             }
         })
 
-
     def start(self, options: dict[str, Any] | None = None):
         """
         Start the mission.
@@ -89,7 +92,13 @@ class Mission:
         """
 
         options = options or { }
-        socketio = self._initiate_sockets(options)
+        self._initiate_sockets(options)
+
+        if not self.aircraft.connected:
+            self.aircraft.connect(os.getenv("AIRCRAFT_CONNECTION_STRING"))
+
+        if not self.aircraft.connected:
+            raise ConnectionError("Could not start mission: Failed to connect to the aircraft")
 
         # Update mission status to reflect start
         self.set_status("Mission started")
