@@ -9,15 +9,15 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self, master):
-        self.master = master
+    def __init__(self):
+        self.master = None
+        self.connected = False
 
     # ------------------------------------------
     # CONNECTION
     # ------------------------------------------
 
-    @staticmethod
-    def connect(connection_string='tcp:127.0.0.1:5762'):
+    def connect(self, connection_string='tcp:127.0.0.1:5762'):
         """
         Connect to the flight controller and return an Aircraft instance.
 
@@ -30,6 +30,7 @@ class Aircraft:
         if master.wait_heartbeat(timeout=10) is None:
             raise ConnectionError(f"No heartbeat received from {connection_string}. Is the FC running?")
         print("Heartbeat received.")
+        self.connected = True
 
         print("Requesting telemetry data streams...")
         master.mav.request_data_stream_send(
@@ -38,7 +39,8 @@ class Aircraft:
             2,  # 2 Hz update rate
             1   # 1 = start sending
         )
-        return Aircraft(master)
+        self.master = master
+        return master
 
     # ------------------------------------------
     # FLIGHT COMMANDS
