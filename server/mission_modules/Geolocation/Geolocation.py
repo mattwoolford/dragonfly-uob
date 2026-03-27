@@ -1,6 +1,3 @@
-# geolocation.py
-# Python 3.10
-
 from server.interfaces.MissionModule import MissionModule
 
 from config import (
