@@ -2,6 +2,7 @@ import math
 import time
 from pymavlink import mavutil
 
+from server.controllers.Camera import Camera
 
 class Aircraft:
     """
@@ -9,9 +10,11 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self):
+    def __init__(self, camera=None, camera_image_save_directory=None):
         self.master = None
         self.connected = False
+        self.camera = camera
+        self.camera_image_save_directory = camera_image_save_directory
 
     # ------------------------------------------
     # CONNECTION
@@ -180,6 +183,30 @@ class Aircraft:
         if not msg:
             return None
         return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+
+    def take_photo_with_position(self):
+        """
+        Capture one image, upload it to the host computer, and return
+        the aircraft position together with the image paths.
+        """
+        position = self.get_position()
+        if position is None:
+            raise RuntimeError("Failed to get aircraft position before taking photo.")
+
+        lat, lon, rel_alt = position
+
+        camera_helper = Camera()
+        path_to_image = camera_helper.capture_and_save_image(
+            camera=self.camera,
+            save_dir_path=self.camera_image_save_directory
+        )
+
+        return {
+            "latitude": lat,
+            "longitude": lon,
+            "relative_altitude_m": rel_alt,
+            "path_to_image": path_to_image,
+        }
 
     def wait_until_reached(self, target_lat, target_lon, target_alt,
                            tolerance_m=2.0, timeout_s=60):
