@@ -301,7 +301,7 @@ class Aircraft:
         if position is None:
             raise RuntimeError("Failed to get aircraft position before taking photo.")
 
-        lat, lon, rel_alt = position
+        lat, lon, rel_alt, heading = position
 
         camera_helper = Camera()
         path_to_image = camera_helper.capture_and_save_image(
@@ -313,6 +313,7 @@ class Aircraft:
             "latitude": lat,
             "longitude": lon,
             "relative_altitude_m": rel_alt,
+            "heading": heading,
             "path_to_image": path_to_image,
         }
 
