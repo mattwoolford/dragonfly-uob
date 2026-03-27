@@ -175,14 +175,59 @@ class Aircraft:
     # POSITION HELPERS
     # ------------------------------------------
 
-    def get_position(self):
+    def get_position(self, timeout_s=2.0):
         """
-        Returns the current (lat, lon, relative_alt_m) or None on timeout.
+        Returns the current (lat, lon, relative_alt_m, yaw_deg)
+        or None on timeout.
+
+        返回当前 (纬度, 经度, 相对高度, 偏航角)，
+        超时则返回 None。
         """
-        msg = self.master.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=2.0)
+        msg = self.master.recv_match(
+            type='GLOBAL_POSITION_INT',
+            blocking=True,
+            timeout=timeout_s
+        )
         if not msg:
             return None
-        return msg.lat / 1e7, msg.lon / 1e7, msg.relative_alt / 1000.0
+
+        # Try to get yaw from GLOBAL_POSITION_INT.hdg first.
+        # 优先从 GLOBAL_POSITION_INT 的 hdg 获取偏航角。
+        #
+        # hdg unit:
+        # - centi-degrees (0.01 degree)
+        # - 65535 means unknown
+        # hdg 单位：
+        # - 0.01 度
+        # - 65535 表示未知
+        if hasattr(msg, 'hdg') and msg.hdg != 65535:
+            yaw_deg = msg.hdg / 100.0
+        else:
+            # Fallback to ATTITUDE.yaw if hdg is unavailable.
+            # 如果没有 hdg，则退回使用 ATTITUDE.yaw。
+            att_msg = self.master.recv_match(
+                type='ATTITUDE',
+                blocking=True,
+                timeout=timeout_s
+            )
+            if not att_msg:
+                return None
+
+            yaw_deg = math.degrees(att_msg.yaw)
+
+            # Convert yaw from [-180, 180] to [0, 360).
+            # 将 yaw 从 [-180, 180] 转换到 [0, 360)。
+            if yaw_deg < 0:
+                yaw_deg += 360.0
+
+        return (
+            msg.lat / 1e7,
+            msg.lon / 1e7,
+            msg.relative_alt / 1000.0,
+            yaw_deg
+        )
+
+    
 
     def take_photo_with_position(self):
         """
