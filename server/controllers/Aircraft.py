@@ -10,14 +10,11 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self, camera=None, host_user=None, host_ip=None, remote_dir=None):
+    def __init__(self, camera=None, camera_image_save_directory=None):
         self.master = None
         self.connected = False
-
         self.camera = camera
-        self.host_user = host_user
-        self.host_ip = host_ip
-        self.remote_dir = remote_dir
+        self.camera_image_save_directory = camera_image_save_directory
 
     # ------------------------------------------
     # CONNECTION
@@ -198,23 +195,17 @@ class Aircraft:
 
         lat, lon, rel_alt = position
 
-        filename = f"img_{int(time.time())}.jpg"
-
         camera_helper = Camera()
-        local_image_path, remote_image_path = camera_helper.capture_and_save_image(
+        path_to_image = camera_helper.capture_and_save_image(
             camera=self.camera,
-            filename=filename,
-            host_user=self.host_user,
-            host_ip=self.host_ip,
-            remote_dir=self.remote_dir
+            save_dir_path=self.camera_image_save_directory
         )
 
         return {
             "latitude": lat,
             "longitude": lon,
             "relative_altitude_m": rel_alt,
-            "local_image_path": local_image_path,
-            "remote_image_path": remote_image_path,
+            "path_to_image": path_to_image,
         }
 
     def wait_until_reached(self, target_lat, target_lon, target_alt,
