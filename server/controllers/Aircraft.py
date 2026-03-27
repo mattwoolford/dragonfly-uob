@@ -16,8 +16,7 @@ class Aircraft:
     # CONNECTION
     # ------------------------------------------
 
-    @staticmethod
-    def connect(connection_string='tcp:127.0.0.1:5762'):
+    def connect(self, connection_string='tcp:127.0.0.1:5762'):
         """
         Connect to the flight controller and return an Aircraft instance.
 
@@ -38,7 +37,8 @@ class Aircraft:
             2,  # 2 Hz update rate
             1   # 1 = start sending
         )
-        return Aircraft(master)
+        self.master = master
+        return master
 
     # ------------------------------------------
     # FLIGHT COMMANDS
