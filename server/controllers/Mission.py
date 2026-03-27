@@ -16,6 +16,7 @@ class Mission:
         self.socketio = socketio_instance  # SocketIO instance
         self.set_status("Mission not started") # Initialise the mission status
         self.steps_queue = []  # Steps to be executed (list of methods)
+        self.suspend = False # Whether to pause the mission (for example, when waiting for input)
         self.target_coordinates = None  # Coordinates of SAR subject
 
     def add_step(self, next_step: Callable):
@@ -46,6 +47,8 @@ class Mission:
     def set_target_coordinates(self, coordinates: tuple[float, float]):
         self.target_coordinates = coordinates
         self.set_status("Target found")
+        self._assessment_image = None
+        self.resume()
         # TODO: Set next step to be geolocation from image
         print(f"Target coordinates set to {coordinates}")
 
@@ -53,9 +56,13 @@ class Mission:
         next = self.steps_queue.pop(0)
         next()
 
+    def resume(self):
+        self.suspend = False
+
     # TODO: Replace with actual search module
     def _search(self):
         # TODO: Replace with image from search
+        self._assessment_image = None
         self.set_status("Navigating to the search area...")
         time.sleep(5)
         self.set_status("Image capture in progress...")
@@ -89,6 +96,6 @@ class Mission:
         time.sleep(2)
 
         # TODO: Enter search loop
-        # while not self.target_coordinates:
+        # while not self.target_coordinates and not self.suspend:
         self.add_step(self._search)
         self.next_step()
