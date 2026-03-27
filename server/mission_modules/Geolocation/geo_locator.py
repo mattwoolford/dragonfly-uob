@@ -83,10 +83,10 @@ class GeoLocator:
 
         # Ground coverage dimensions must be positive.
         # 地面覆盖范围必须大于0。
-        if data.coverage.ground_width_m_at_10m <= 0:
+        if data.coverage.ground_width_m <= 0:
             raise ValueError("ground_width_m_at_10m must be > 0")
 
-        if data.coverage.ground_height_m_at_10m <= 0:
+        if data.coverage.ground_height_m <= 0:
             raise ValueError("ground_height_m_at_10m must be > 0")
 
     @staticmethod
@@ -105,10 +105,10 @@ class GeoLocator:
         # Calculate how many meters each pixel represents in x and y directions.
         # 计算每个像素在x方向和y方向上对应的地面距离（米/像素）。
         meters_per_px_x = (
-            data.coverage.ground_width_m_at_10m / data.image.image_width_px
+            data.coverage.ground_width_m / data.image.image_width_px
         )
         meters_per_px_y = (
-            data.coverage.ground_height_m_at_10m / data.image.image_height_px
+            data.coverage.ground_height_m / data.image.image_height_px
         )
 
         # Multiply pixel offset by meters-per-pixel to get ground offset in meters.
