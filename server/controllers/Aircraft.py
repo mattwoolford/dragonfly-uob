@@ -140,6 +140,13 @@ class Aircraft:
                 print(f"Safety check failed: {reason}")
                 return False
 
+        self.master.mav.command_long_send(
+            self.master.target_system, self.master.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+            4, 0, 0, 0, 0, 0  # 4 = GUIDED
+        )
+        time.sleep(0.3)
         self.master.mav.set_position_target_global_int_send(
             0, self.master.target_system, self.master.target_component,
             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
@@ -153,6 +160,16 @@ class Aircraft:
         }
         return True
 
+    def cancel(self):
+        """Cancel the current journey and switch to LOITER."""
+        self.journey = None
+        self.master.mav.command_long_send(
+            self.master.target_system, self.master.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+            5, 0, 0, 0, 0, 0  # 5 = LOITER
+        )
+        print("Journey cancelled, hovering.")
 
     def set_servo(self, channel, pwm):
         """
