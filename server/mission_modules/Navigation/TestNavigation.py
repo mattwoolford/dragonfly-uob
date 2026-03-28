@@ -26,7 +26,12 @@ WAYPOINT_2 = {
     "alt": 10.0,
 }
 
-TOLERANCE_M = 3.0
+WAYPOINT_3 = {
+    "lat": 51.4229083,
+    "lon": -2.6669097,
+    "alt": 10.0,
+}
+TOLERANCE_M = 2.0
 ARRIVAL_TIMEOUT_S = 120
 
 CONNECTION = "tcp:127.0.0.1:5762"
@@ -107,13 +112,28 @@ def run():
         print("    FAILED: did not arrive at waypoint 2 within timeout.")
 
     # ---- Cancel test ----
-    print("\n[8] Testing cancel (goto waypoint 1 then set journey=None)...")
-    aircraft.goto(WAYPOINT_1["lat"], WAYPOINT_1["lon"], WAYPOINT_1["alt"])
-    time.sleep(2)
-    aircraft.journey = None
-    print(f"    journey after cancel: {aircraft.journey}")
+    print("\n[8] Mid-flight cancel test: goto waypoint 1, cancel after 8s, then goto waypoint 2...")
+    result = aircraft.goto(WAYPOINT_1["lat"], WAYPOINT_1["lon"], WAYPOINT_1["alt"])
+    if not result:
+        print("    FAILED: safety check rejected waypoint 1.")
+        return
+    print(f"    Flying to waypoint 1. journey={aircraft.journey}")
+    time.sleep(9)
+    aircraft.cancel()
+    print(f"    Cancelled. journey={aircraft.journey}")
     assert aircraft.journey is None, "Cancel failed"
-    print("    PASSED: journey cancelled.")
+    print("    PASSED: journey cancelled mid-flight.")
+
+    result = aircraft.goto(WAYPOINT_3["lat"], WAYPOINT_3["lon"], WAYPOINT_3["alt"])
+    if not result:
+        print("    FAILED: safety check rejected waypoint 3.")
+        return
+    print(f"    Now flying to waypoint 3. journey={aircraft.journey}")
+    arrived = wait_for_arrival(aircraft, WAYPOINT_3)
+    if arrived:
+        print("    PASSED: arrived at waypoint 3.")
+    else:
+        print("    FAILED: did not arrive at waypoint 3 within timeout.")
 
     print("\nAll tests done.")
 
