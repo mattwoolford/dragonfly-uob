@@ -1,7 +1,6 @@
 import math
 from typing import List, Tuple, Dict, Optional
-import matplotlib.pyplot as plt
-from demo import CELL_W, CELL_H
+from .demo import CELL_W, CELL_H
 
 Point = Tuple[float, float]
 Polygon = List[Point]
@@ -349,80 +348,3 @@ def print_route_summary(result: Dict) -> None:
     print("\nFinal route points in local custom XY:")
     for i, (x, y) in enumerate(final_route_points, start=1):
         print(f"{i}: ({x:.2f}, {y:.2f})")
-
-
-def plot_route_result(
-    green_poly: Polygon,
-    orange_poly: Polygon,
-    blue_poly: Polygon,
-    good_cells: List[Cell],
-    repair_cells: List[Cell],
-    result: Dict,
-) -> None:
-    main_route = result["main_route_points"]
-    final_route = result["final_route_points"]
-    leftover_repairs = result["leftover_repairs"]
-
-    plt.figure(figsize=(10, 8))
-
-    def draw_poly(poly: Polygon, color: str, label: str):
-        xs = [p[0] for p in poly] + [poly[0][0]]
-        ys = [p[1] for p in poly] + [poly[0][1]]
-        plt.plot(xs, ys, color=color, label=label)
-
-    draw_poly(green_poly, "green", "Flight Boundary")
-    draw_poly(orange_poly, "orange", "Protected Zone")
-    draw_poly(blue_poly, "blue", "Target Area")
-
-    if good_cells:
-        gx = [c[0] for c in good_cells]
-        gy = [c[1] for c in good_cells]
-        plt.scatter(gx, gy, s=35, label="Good Centers")
-
-    if repair_cells:
-        rx = [c[0] for c in repair_cells]
-        ry = [c[1] for c in repair_cells]
-        plt.scatter(rx, ry, s=35, marker="x", label="Repair Centers")
-
-    if len(main_route) >= 2:
-        plt.plot(
-            [p[0] for p in main_route],
-            [p[1] for p in main_route],
-            "--",
-            linewidth=1.5,
-            label="Main Good Route"
-        )
-
-    if len(final_route) >= 2:
-        plt.plot(
-            [p[0] for p in final_route],
-            [p[1] for p in final_route],
-            "-",
-            linewidth=2.5,
-            label="Final Route"
-        )
-
-    if final_route:
-        plt.scatter(
-            [p[0] for p in final_route],
-            [p[1] for p in final_route],
-            s=18,
-            label="Visited Route Points"
-        )
-
-    if leftover_repairs:
-        plt.scatter(
-            [p[0] for p in leftover_repairs],
-            [p[1] for p in leftover_repairs],
-            s=60,
-            marker="s",
-            label="Leftover Repairs"
-        )
-
-    plt.axis("equal")
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.title("Vertical Snake Good Route + Repair After Good")
-    plt.legend()
-    plt.grid(True)
-    plt.show()
