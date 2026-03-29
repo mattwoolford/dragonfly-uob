@@ -1,5 +1,5 @@
 from server.interfaces.MissionModule import MissionModule
-from running import running
+from .running import running
 from pathlib import Path
 import json
 

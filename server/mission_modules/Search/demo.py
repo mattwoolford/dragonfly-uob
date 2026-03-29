@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Set, Dict
 
 Point = Tuple[float, float]
@@ -511,45 +510,3 @@ def find_best_phase(
         raise RuntimeError("No valid phase was evaluated.")
 
     return best
-
-
-# ============================================================
-# Plotting
-# ============================================================
-
-def plot_scene(
-    green: Polygon,
-    orange: Polygon,
-    blue: Polygon,
-    selected_cells: List[Tuple[float, float, int, int]],
-    markers: List[Point],
-    uncovered_idx: Set[int],
-    title: str = ""
-):
-    fig, ax = plt.subplots()
-
-    def draw_poly(poly: Polygon, color: str, label: str):
-        xs = [p[0] for p in poly] + [poly[0][0]]
-        ys = [p[1] for p in poly] + [poly[0][1]]
-        ax.plot(xs, ys, color=color, label=label)
-
-    draw_poly(green, "green", "Flight Boundary")
-    draw_poly(orange, "orange", "Protected Zone")
-    draw_poly(blue, "blue", "Target Area")
-
-    for cx, cy, _, _ in selected_cells:
-        corners = rect_corners(cx, cy)
-        xs = [p[0] for p in corners] + [corners[0][0]]
-        ys = [p[1] for p in corners] + [corners[0][1]]
-        ax.plot(xs, ys, color="black", linewidth=1.5)
-
-    if uncovered_idx:
-        ux = [markers[i][0] for i in uncovered_idx]
-        uy = [markers[i][1] for i in uncovered_idx]
-        ax.scatter(ux, uy, s=10, color="red", label="Uncovered markers")
-
-    ax.set_aspect("equal")
-    ax.legend()
-    if title:
-        ax.set_title(title)
-    plt.show()
