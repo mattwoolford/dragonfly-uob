@@ -4,6 +4,8 @@ from pymavlink import mavutil
 
 from server.controllers.Camera import Camera
 
+from server.mission_modules.Navigation.Navigation import Navigation
+
 class Aircraft:
     """
     Controller for sending flight commands to the aircraft via MAVLink.
@@ -119,19 +121,56 @@ class Aircraft:
             return False
         return self.wait_until_disarmed(timeout_s=timeout_s)
 
-    def goto(self, lat, lon, alt, tolerance_m=2.0, timeout_s=60):
+    def goto(self, lat, lon, alt):
         """
         Fly to the given GPS coordinates at the specified altitude (metres, relative).
+        Checks destination point and flight path against geofence before sending command.
         Blocks until the position is reached or timeout expires.
-        Returns True on arrival, False on timeout.
+        Returns True on arrival, False on timeout or failed safety check.
         """
+        ok, reason = Navigation.check_point(lat, lon, alt)
+        if not ok:
+            print(f"Safety check failed: {reason}")
+            return False
+
+        pos = self.get_position()
+
+        if pos:
+            ok, reason = Navigation.check_path(pos[0], pos[1], lat, lon, alt)
+            if not ok:
+                print(f"Safety check failed: {reason}")
+                return False
+
+        self.master.mav.command_long_send(
+                self.master.target_system, self.master.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                4, 0, 0, 0, 0, 0  # 4 = GUIDED
+        )
+        time.sleep(0.3)
         self.master.mav.set_position_target_global_int_send(
-            0, self.master.target_system, self.master.target_component,
-            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-            int(0b110111111000),
-            int(lat * 1e7), int(lon * 1e7), alt,
-            0, 0, 0, 0, 0, 0, 0, 0)
-        return self.wait_until_reached(lat, lon, alt, tolerance_m=tolerance_m, timeout_s=timeout_s)
+                0, self.master.target_system, self.master.target_component,
+                mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                int(0b110111111000),
+                int(lat * 1e7), int(lon * 1e7), alt,
+                0, 0, 0, 0, 0, 0, 0, 0)
+        self.journey = {
+            "longitude": lon,
+            "latitude": lat,
+            "altitude": alt
+        }
+        return True
+
+    def cancel(self):
+        """Cancel the current journey and switch to LOITER."""
+        self.journey = None
+        self.master.mav.command_long_send(
+            self.master.target_system, self.master.target_component,
+            mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
+            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+            5, 0, 0, 0, 0, 0  # 5 = LOITER
+        )
+        print("Journey cancelled, hovering.")
 
     def set_servo(self, channel, pwm):
         """
@@ -180,8 +219,6 @@ class Aircraft:
         Returns the current (lat, lon, relative_alt_m, yaw_deg)
         or None on timeout.
 
-        返回当前 (纬度, 经度, 相对高度, 偏航角)，
-        超时则返回 None。
         """
         msg = self.master.recv_match(
             type='GLOBAL_POSITION_INT',
@@ -226,6 +263,31 @@ class Aircraft:
             msg.relative_alt / 1000.0,
             yaw_deg
         )
+
+
+    def check_if_journey_complete(self, target_lat, target_lon, target_alt,
+                                  tolerance_m=2.0):
+        """
+        Poll GLOBAL_POSITION_INT until within tolerance_m of the target position.
+        Returns True on arrival, False on timeout.
+        """
+
+        if self.journey is None:
+            return False
+        msg = self.master.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=2.0)
+        if not msg:
+            self.journey = None
+            return False
+        current_lat = msg.lat / 1e7
+        current_lon = msg.lon / 1e7
+        current_alt = msg.relative_alt / 1000.0
+
+        h_dist = self.get_distance_metres(current_lat, current_lon, target_lat, target_lon)
+        v_dist = abs(current_alt - target_alt)
+
+        if h_dist <= tolerance_m and v_dist <= tolerance_m:
+            self.journey = None
+            return True
 
 
 
@@ -280,29 +342,6 @@ class Aircraft:
             "heading": heading,
             "path_to_image": path_to_image,
         }
-
-    def wait_until_reached(self, target_lat, target_lon, target_alt,
-                           tolerance_m=2.0, timeout_s=60):
-        """
-        Poll GLOBAL_POSITION_INT until within tolerance_m of the target position.
-        Returns True on arrival, False on timeout.
-        """
-        start_time = time.time()
-        while time.time() - start_time < timeout_s:
-            msg = self.master.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=2.0)
-            if not msg:
-                continue
-            current_lat = msg.lat / 1e7
-            current_lon = msg.lon / 1e7
-            current_alt = msg.relative_alt / 1000.0
-
-            h_dist = self.get_distance_metres(current_lat, current_lon, target_lat, target_lon)
-            v_dist = abs(current_alt - target_alt)
-
-            if h_dist <= tolerance_m and v_dist <= tolerance_m:
-                return True
-            time.sleep(0.5)
-        return False
 
     def wait_until_disarmed(self, timeout_s=60):
         """
