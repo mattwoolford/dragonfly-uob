@@ -89,7 +89,4 @@ class Camera:
             self._capture_image(camera, local_image_path)
         except Exception as e:
             raise RuntimeError(f"Capture failed: {e}") from e
-
-        remote_image_path = str(save_folder / filename)
-
-        return str(local_image_path), remote_image_path
+        return str(local_image_path)
