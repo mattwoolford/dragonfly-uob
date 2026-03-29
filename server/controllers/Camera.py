@@ -57,25 +57,18 @@ class Camera:
         """
         Capture one image with an already-initialized camera
         and save it locally.
-
         Parameters
         ----------
         camera
-            An already-initialized and already-running camera object.
+        An already-initialized and already-running camera object.
         save_dir_path : str
-            Folder name or directory path used to save the image.
+        Folder name or directory path used to save the image.
         filename : str | None
-            Optional image filename. If None, generate one automatically.
-
+        Optional image filename. If None, generate one automatically.
         Returns
         -------
-        tuple[str, str]
-            (local_image_path, remote_image_path)
-
-        Notes
-        -----
-        remote_image_path is kept only for compatibility with existing code.
-        In this version, no actual remote upload is performed.
+        str
+        Local image path.
         """
         if filename is None:
             filename = f"img_{int(time.time())}.jpg"
