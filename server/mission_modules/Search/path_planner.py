@@ -142,7 +142,7 @@ def quantize_column(x: float) -> int:
     return int(round(x / CELL_W))
 
 
-def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell]:
+def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Optional[Cell]]:
     """
     Build the good main route using the current rule:
 
@@ -157,7 +157,7 @@ def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell
     This guarantees all good cells are included.
     """
     if not good_cells:
-        return [], None  # type: ignore
+        return [], None
 
     columns: Dict[int, List[Cell]] = {}
     for cell in good_cells:
@@ -184,7 +184,7 @@ def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell
     return ordered, start_cell
 
 
-def build_center_out_good_route(good_cells: List[Cell]) -> Tuple[List[Cell], Cell]:
+def build_center_out_good_route(good_cells: List[Cell]) -> Tuple[List[Cell], Optional[Cell]]:
     """
     Kept under the old function name for compatibility with external code.
     """
@@ -255,6 +255,48 @@ def build_repair_route_after_good(
 
 
 # ============================================================
+# Repair-only route
+# ============================================================
+
+def build_repair_only_route(
+    repair_cells: List[Cell],
+    protected_zone: Polygon,
+) -> Tuple[List[Point], List[Point]]:
+    """
+    Build a route directly from repair cells when there are no good cells.
+
+    Rule:
+    - start from the first repair point
+    - repeatedly choose the nearest legal next repair point
+    - points that cannot be legally connected remain in leftover_repairs
+    """
+    unvisited_repairs: List[Point] = [(cx, cy) for cx, cy, _, _ in repair_cells]
+
+    if not unvisited_repairs:
+        return [], []
+
+    repair_route_points: List[Point] = [unvisited_repairs.pop(0)]
+    current = repair_route_points[-1]
+
+    while unvisited_repairs:
+        next_r = choose_next_repair_after_good(
+            current=current,
+            unvisited_repairs=unvisited_repairs,
+            protected_zone=protected_zone,
+        )
+
+        if next_r is None:
+            break
+
+        repair_route_points.append(next_r)
+        unvisited_repairs.remove(next_r)
+        current = next_r
+
+    leftover_repairs = unvisited_repairs
+    return repair_route_points, leftover_repairs
+
+
+# ============================================================
 # Full path planning
 # ============================================================
 
@@ -267,45 +309,53 @@ def plan_full_route(
     good_cells / repair_cells are taken directly from demo.find_best_phase outputs:
         selected_good / selected_bad
 
-    New logic:
-    1. visit all good cells first
-    2. then visit repair cells separately
-
-    Returns:
-        center_cell
-        main_route_cells
-        main_route_points
-        final_route_points
-        leftover_repairs
+    Logic:
+    1. if good cells exist: visit all good cells first, then repair cells
+    2. if no good cells: go directly through repair cells
+    3. if both are empty: return an empty route
     """
-    if not good_cells:
-        raise ValueError("good_cells is empty.")
+    # --------------------------------------------------------
+    # Case 1: normal logic, good cells exist
+    # --------------------------------------------------------
+    if good_cells:
+        main_route_cells, center_cell = build_center_out_good_route(good_cells)
+        main_route_points = [(cx, cy) for cx, cy, _, _ in main_route_cells]
 
-    main_route_cells, center_cell = build_center_out_good_route(good_cells)
-    main_route_points = [(cx, cy) for cx, cy, _, _ in main_route_cells]
+        if not main_route_points:
+            raise ValueError("main_route_points is empty.")
 
-    if not main_route_points:
-        raise ValueError("main_route_points is empty.")
+        final_route: List[Point] = [main_route_points[0]]
 
-    # Phase 1: good route only
-    final_route: List[Point] = [main_route_points[0]]
+        for b in main_route_points[1:]:
+            if segment_crosses_polygon(final_route[-1], b, protected_zone):
+                raise ValueError(
+                    f"Main segment crosses protected zone: {final_route[-1]} -> {b}\n"
+                    f"Current snake main route needs further adjustment."
+                )
+            final_route.append(b)
 
-    for b in main_route_points[1:]:
-        if segment_crosses_polygon(final_route[-1], b, protected_zone):
-            raise ValueError(
-                f"Main segment crosses protected zone: {final_route[-1]} -> {b}\n"
-                f"Current snake main route needs further adjustment."
-            )
-        final_route.append(b)
+        repair_route_points, leftover_repairs = build_repair_route_after_good(
+            start_point=final_route[-1],
+            repair_cells=repair_cells,
+            protected_zone=protected_zone,
+        )
 
-    # Phase 2: repair route only after all good points are finished
-    repair_route_points, leftover_repairs = build_repair_route_after_good(
-        start_point=final_route[-1],
-        repair_cells=repair_cells,
-        protected_zone=protected_zone,
-    )
+        final_route.extend(repair_route_points)
 
-    final_route.extend(repair_route_points)
+    # --------------------------------------------------------
+    # Case 2: no good cells, go directly through repair cells
+    # --------------------------------------------------------
+    else:
+        main_route_cells = []
+        main_route_points = []
+        center_cell = None
+
+        repair_route_points, leftover_repairs = build_repair_only_route(
+            repair_cells=repair_cells,
+            protected_zone=protected_zone,
+        )
+
+        final_route = repair_route_points
 
     return {
         "center_cell": center_cell,
