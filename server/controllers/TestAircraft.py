@@ -113,10 +113,7 @@ class TestAircraft(unittest.TestCase):
         aircraft.get_position = Mock(return_value=(51.421, -2.667, 20.0, 135.0))
 
         mock_camera_helper = Mock()
-        mock_camera_helper.capture_and_save_image.return_value = (
-            "/tmp/drone_images/img_123.jpg",
-            "/tmp/drone_images/img_123.jpg",
-        )
+        mock_camera_helper.capture_and_save_image.return_value = "/tmp/drone_images/img_123.jpg"
         mock_camera_class.return_value = mock_camera_helper
 
         result = aircraft.take_photo_with_position()
@@ -125,10 +122,7 @@ class TestAircraft(unittest.TestCase):
         self.assertEqual(result["longitude"], -2.667)
         self.assertEqual(result["relative_altitude_m"], 20.0)
         self.assertEqual(result["heading"], 135.0)
-        self.assertEqual(
-            result["path_to_image"],
-            ("/tmp/drone_images/img_123.jpg", "/tmp/drone_images/img_123.jpg"),
-        )
+        self.assertEqual(result["path_to_image"], "/tmp/drone_images/img_123.jpg")
 
         mock_camera_helper.capture_and_save_image.assert_called_once_with(
             camera="CAMERA_OBJECT",
@@ -167,7 +161,7 @@ class TestCamera(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             save_dir = Path(tmpdir) / "images"
 
-            local_path, remote_path = camera_helper.capture_and_save_image(
+            local_path = camera_helper.capture_and_save_image(
                 camera=fake_camera,
                 save_dir_path=str(save_dir),
                 filename="test_image"
@@ -175,7 +169,6 @@ class TestCamera(unittest.TestCase):
 
             self.assertTrue(Path(local_path).exists())
             self.assertTrue(local_path.endswith("test_image.jpg"))
-            self.assertEqual(remote_path, local_path)
             self.assertEqual(len(fake_camera.saved_paths), 1)
 
     def test_capture_and_save_image_with_relative_folder_goes_to_desktop(self):
@@ -186,7 +179,7 @@ class TestCamera(unittest.TestCase):
             fake_home = Path(tmpdir)
 
             with patch("server.controllers.Camera.Path.home", return_value=fake_home):
-                local_path, remote_path = camera_helper.capture_and_save_image(
+                local_path = camera_helper.capture_and_save_image(
                     camera=fake_camera,
                     save_dir_path="drone_images",
                     filename="demo.jpg"
@@ -195,7 +188,6 @@ class TestCamera(unittest.TestCase):
             expected_dir = fake_home / "Desktop" / "drone_images"
             self.assertTrue(Path(local_path).exists())
             self.assertTrue(str(local_path).startswith(str(expected_dir)))
-            self.assertEqual(remote_path, local_path)
 
     def test_capture_and_save_image_generates_default_filename(self):
         camera_helper = Camera()
@@ -204,7 +196,7 @@ class TestCamera(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             save_dir = Path(tmpdir) / "images"
 
-            local_path, remote_path = camera_helper.capture_and_save_image(
+            local_path = camera_helper.capture_and_save_image(
                 camera=fake_camera,
                 save_dir_path=str(save_dir),
                 filename=None
@@ -213,7 +205,6 @@ class TestCamera(unittest.TestCase):
             self.assertTrue(Path(local_path).exists())
             self.assertTrue(Path(local_path).name.startswith("img_"))
             self.assertTrue(Path(local_path).suffix.lower() == ".jpg")
-            self.assertEqual(remote_path, local_path)
 
     def test_capture_and_save_image_raises_when_camera_is_none(self):
         camera_helper = Camera()
