@@ -227,12 +227,27 @@ class Aircraft:
             yaw_deg
         )
 
-    
-
     def take_photo_with_position(self):
         """
-        Capture one image, upload it to the host computer, and return
-        the aircraft position together with the image paths.
+        Capture one image and return the aircraft state at the capture time
+        together with the image path.
+
+        Preconditions:
+            - self.camera must be set to a valid camera object
+            - self.camera_image_save_directory must be set to the image save directory
+            - the aircraft must be able to provide valid position data
+
+        Returns:
+            dict: A dictionary containing:
+                - latitude (float): Aircraft latitude at capture time
+                - longitude (float): Aircraft longitude at capture time
+                - relative_altitude_m (float): Relative altitude in metres
+                - heading (float): Aircraft heading at capture time, in degrees
+                - path_to_image: Image path result returned by the camera module
+
+        Raises:
+            RuntimeError: If aircraft position cannot be obtained before capture.
+            Exception: Propagates camera-related capture errors.
         """
         position = self.get_position()
         if position is None:
@@ -251,30 +266,6 @@ class Aircraft:
             "longitude": lon,
             "relative_altitude_m": rel_alt,
             "heading": heading,
-            "path_to_image": path_to_image,
-        }
-
-    def take_photo_with_position(self):
-        """
-        Capture one image, upload it to the host computer, and return
-        the aircraft position together with the image paths.
-        """
-        position = self.get_position()
-        if position is None:
-            raise RuntimeError("Failed to get aircraft position before taking photo.")
-
-        lat, lon, rel_alt = position
-
-        camera_helper = Camera()
-        path_to_image = camera_helper.capture_and_save_image(
-            camera=self.camera,
-            save_dir_path=self.camera_image_save_directory
-        )
-
-        return {
-            "latitude": lat,
-            "longitude": lon,
-            "relative_altitude_m": rel_alt,
             "path_to_image": path_to_image,
         }
 
