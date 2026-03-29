@@ -15,7 +15,7 @@ TRANSIT_POINTS_GEO = [
 ]
 
 # ============================================================
-# Built-in example PLB polygon
+# Example PLB polygon
 # ============================================================
 
 EXAMPLE_PLB_GEO = [
@@ -87,9 +87,8 @@ def _load_route():
 
 class Search(MissionModule):
     """
-    This mission module implements a path plan methodology with waypoints
-    to search a field (and with the possible help of a PLB) so that the
-    mission can find the person in need of rescue.
+    This mission module implements path planning for field search,
+    including optional PLB-based replanning.
     """
 
     def _validate_plb_geo(self, plb_geo):
@@ -115,7 +114,15 @@ class Search(MissionModule):
 
         return validated
 
-    def start(self, options=None):
+    def _finalise_route(self, planned_route_geo, add_transit):
+        """
+        Add optional transit points, save the route, and return it.
+        """
+        route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
+        _save_route(route_geo)
+        return route_geo
+
+    def start(self, options):
         """
         Start the mission module.
 
@@ -147,43 +154,18 @@ class Search(MissionModule):
 
         elif mode == "full":
             planned_route_geo = running(plb_geo=None)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
+            return self._finalise_route(planned_route_geo, add_transit)
 
         elif mode == "plb":
             validated_plb_geo = self._validate_plb_geo(plb_geo)
             planned_route_geo = running(plb_geo=validated_plb_geo)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
+            return self._finalise_route(planned_route_geo, add_transit)
 
         elif mode == "plb_demo":
             planned_route_geo = running(plb_geo=EXAMPLE_PLB_GEO)
-            route_geo = TRANSIT_POINTS_GEO + planned_route_geo if add_transit else planned_route_geo
-            _save_route(route_geo)
-            return route_geo
+            return self._finalise_route(planned_route_geo, add_transit)
 
         else:
             raise ValueError(
                 "Invalid mode. Use one of: 'reuse', 'full', 'plb', 'plb_demo'."
             )
-
-
-def main():
-    search = Search()
-
-    route_geo = search.start({
-        "mode": "full",
-        "add_transit": True
-    })
-
-    print("\nRoute (geo):")
-    for i, (lat, lon) in enumerate(route_geo, start=1):
-        print(f"{i}: ({lat:.7f}, {lon:.7f})")
-
-    print(f"\nRoute saved to: {_get_route_file()}")
-
-
-if __name__ == "__main__":
-    main()
