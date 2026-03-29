@@ -1,18 +1,14 @@
 import math
-from demo import sample_markers_in_blue, find_best_phase, plot_scene, MARKER_STEP, PHASE_STEP, CELL_W, CELL_H
+from .demo import sample_markers_in_blue, find_best_phase, MARKER_STEP, PHASE_STEP
 
-from zuobiaoxi import (
+from .zuobiaoxi import (
     point_1_exact,
     point_2_exact,
     geo_to_custom_xy,
     build_custom_frame,
 )
 
-from path_planner import (
-    plan_full_route,
-    print_route_summary,
-    plot_route_result,
-)
+from .path_planner import plan_full_route
 
 # ============================================================
 # Geographic conversion helpers
@@ -168,26 +164,13 @@ def running(plb_geo=None):
         phase_step=PHASE_STEP
     )
 
-    dx = best["dx"]
-    dy = best["dy"]
-    coverage = best["coverage"]
-    selected = best["selected"]
     selected_good = best["selected_good"]
     selected_bad = best["selected_bad"]
-    uncovered_idx = best["uncovered_idx"]
 
     # --------------------------------------------------------
     # Original rectangle center output
     # --------------------------------------------------------
 
-    center_points_local = [(cx, cy) for cx, cy, _, _ in selected]
-    center_points_local = sorted(center_points_local, key=lambda p: (-p[1], p[0]))
-
-    center_points_geo = points_custom_to_geo(
-        center_points_local,
-        point_1_exact,
-        point_2_exact
-    )
 
     # --------------------------------------------------------
     # Path planning
