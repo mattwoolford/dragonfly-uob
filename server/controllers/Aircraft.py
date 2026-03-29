@@ -227,50 +227,27 @@ class Aircraft:
             yaw_deg
         )
 
-
-
-        # Try to get yaw from GLOBAL_POSITION_INT.hdg first.
-        # 优先从 GLOBAL_POSITION_INT 的 hdg 获取偏航角。
-        #
-        # hdg unit:
-        # - centi-degrees (0.01 degree)
-        # - 65535 means unknown
-        # hdg 单位：
-        # - 0.01 度
-        # - 65535 表示未知
-        if hasattr(msg, 'hdg') and msg.hdg != 65535:
-            yaw_deg = msg.hdg / 100.0
-        else:
-            # Fallback to ATTITUDE.yaw if hdg is unavailable.
-            # 如果没有 hdg，则退回使用 ATTITUDE.yaw。
-            att_msg = self.master.recv_match(
-                type='ATTITUDE',
-                blocking=True,
-                timeout=timeout_s
-            )
-            if not att_msg:
-                return None
-
-            yaw_deg = math.degrees(att_msg.yaw)
-
-            # Convert yaw from [-180, 180] to [0, 360).
-            # 将 yaw 从 [-180, 180] 转换到 [0, 360)。
-            if yaw_deg < 0:
-                yaw_deg += 360.0
-
-        return (
-            msg.lat / 1e7,
-            msg.lon / 1e7,
-            msg.relative_alt / 1000.0,
-            yaw_deg
-        )
-
-
-
     def take_photo_with_position(self):
         """
-        Capture one image, upload it to the host computer, and return
-        the aircraft position together with the image paths.
+        Capture one image and return the aircraft state at the capture time
+        together with the image path.
+
+        Preconditions:
+            - self.camera must be set to a valid camera object
+            - self.camera_image_save_directory must be set to the image save directory
+            - the aircraft must be able to provide valid position data
+
+        Returns:
+            dict: A dictionary containing:
+                - latitude (float): Aircraft latitude at capture time
+                - longitude (float): Aircraft longitude at capture time
+                - relative_altitude_m (float): Relative altitude in metres
+                - heading (float): Aircraft heading at capture time, in degrees
+                - path_to_image: Image path result returned by the camera module
+
+        Raises:
+            RuntimeError: If aircraft position cannot be obtained before capture.
+            Exception: Propagates camera-related capture errors.
         """
         position = self.get_position()
         if position is None:
