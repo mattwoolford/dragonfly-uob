@@ -124,17 +124,30 @@ class Search(MissionModule):
 
     def start(self, options):
         """
-        Start the mission module.
+        Unified entry point for the search module.
 
-        Expected options format:
-            {
-                "mode": "full" | "reuse" | "plb" | "plb_demo",
-                "plb_geo": [(lat, lon), ...],   # required only for mode="plb"
-                "add_transit": True | False     # optional, default True
-            }
+        Generates a route based on the selected mode, or loads a previously
+        saved route.
+
+        Args:
+            options (dict): Configuration dictionary with the following fields:
+                - mode (str): "full", "reuse", "plb", or "plb_demo"
+                - plb_geo (list[tuple[float, float]]): Required only when
+                  mode="plb". Geographic PLB polygon as [(lat, lon), ...]
+                - add_transit (bool, optional): Whether to prepend fixed
+                  transit waypoints. Defaults to True.
 
         Returns:
-            route_geo: list of (lat, lon)
+            list[tuple[float, float]]: Ordered list of geographic waypoints
+            in the form [(lat, lon), (lat, lon), ...].
+
+        Notes:
+            - "full": replan using the default search region
+            - "plb": replan using the input plb_geo
+            - "plb_demo": replan using the built-in example PLB polygon
+            - "reuse": load the last saved route without replanning
+            - If add_transit=True, fixed transit waypoints are prepended
+              to the returned route
         """
         if options is None:
             options = {}

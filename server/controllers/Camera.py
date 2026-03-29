@@ -1,11 +1,10 @@
 import time
 from pathlib import Path
-import subprocess
+
 
 class Camera:
-
     @staticmethod
-    def _enforce_jpg_file_ext(self, filename: str) -> str:
+    def _enforce_jpg_file_ext(filename: str) -> str:
         """
         Ensure the filename is valid and ends with .jpg
         """
@@ -20,62 +19,77 @@ class Camera:
         return filename
 
     @staticmethod
-    def _create_local_save_folder(self, desktop_folder_name: str) -> Path:
+    def _create_local_save_folder(save_dir_path: str) -> Path:
         """
         Create/use a folder on the Raspberry Pi Desktop.
+
+        If save_dir_path is just a folder name, it will be created under Desktop.
+        If it is an absolute path, use it directly.
         """
-        desktop_path = Path.home() / "Desktop"
-        save_folder = desktop_path / desktop_folder_name
-        save_folder.mkdir(parents=True, exist_ok=True)
-        return save_folder
+        if not save_dir_path or not str(save_dir_path).strip():
+            raise ValueError("save_dir_path must be a non-empty string")
+
+        save_dir_path = str(save_dir_path).strip()
+        save_path = Path(save_dir_path)
+
+        if not save_path.is_absolute():
+            save_path = Path.home() / "Desktop" / save_dir_path
+
+        save_path.mkdir(parents=True, exist_ok=True)
+        return save_path
 
     @staticmethod
-    def _capture_image(self, camera, local_image_path: Path) -> None:
+    def _capture_image(camera, local_image_path: Path) -> None:
         """
-        Capture one image using an already-running Picamera2 object.
+        Capture one image using an already-running camera object.
         """
+        if camera is None:
+            raise ValueError("camera must not be None")
+
         camera.capture_file(str(local_image_path))
 
     def capture_and_save_image(
         self,
         camera,
-        filename,
-        save_dir_path
+        save_dir_path,
+        filename=None
     ):
         """
-        Capture one image with an already-initialized Raspberry Pi camera
-        and upload it to a host computer via scp.
+        Capture one image with an already-initialized camera
+        and save it locally.
 
         Parameters
         ----------
-        camera : Picamera2
+        camera
             An already-initialized and already-running camera object.
-        filename : str
-            Image filename, e.g. "image_001.jpg"
         save_dir_path : str
-            The path to the directory to save the image
+            Folder name or directory path used to save the image.
+        filename : str | None
+            Optional image filename. If None, generate one automatically.
 
         Returns
         -------
         tuple[str, str]
             (local_image_path, remote_image_path)
+
+        Notes
+        -----
+        remote_image_path is kept only for compatibility with existing code.
+        In this version, no actual remote upload is performed.
         """
+        if filename is None:
+            filename = f"img_{int(time.time())}.jpg"
 
-        filename = self._enforce_jpg_file_ext(f"img_{int(time.time())}.jpg")
-        save_dir_path = self._create_local_save_folder(save_dir_path)
+        filename = self._enforce_jpg_file_ext(filename)
+        save_folder = self._create_local_save_folder(save_dir_path)
 
-        base_dir = Path(__file__).resolve().parent
-        local_image_path = f"{base_dir}/{save_dir_path}/{filename}"
+        local_image_path = save_folder / filename
 
         try:
-            # Step 1: capture image on Raspberry Pi
             self._capture_image(camera, local_image_path)
-
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"File transfer command failed: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Capture/upload failed: {e}") from e
+            raise RuntimeError(f"Capture failed: {e}") from e
 
-        remote_image_path = f"{save_dir_path.rstrip('/')}/{filename}"
+        remote_image_path = str(save_folder / filename)
 
         return str(local_image_path), remote_image_path
