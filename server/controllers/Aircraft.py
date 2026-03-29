@@ -264,7 +264,6 @@ class Aircraft:
             yaw_deg
         )
 
-
     def check_if_journey_complete(self, target_lat, target_lon, target_alt,
                                   tolerance_m=2.0):
         """
@@ -288,8 +287,7 @@ class Aircraft:
         if h_dist <= tolerance_m and v_dist <= tolerance_m:
             self.journey = None
             return True
-
-
+        return False
 
         # Try to get yaw from GLOBAL_POSITION_INT.hdg first.
         # 优先从 GLOBAL_POSITION_INT 的 hdg 获取偏航角。
