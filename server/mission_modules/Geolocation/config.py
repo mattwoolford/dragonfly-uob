@@ -3,8 +3,8 @@
 
 # Image resolution in pixels.
 # 图像分辨率（像素）。
-IMAGE_WIDTH_PX = 1920   # Image width.  图像宽度。
-IMAGE_HEIGHT_PX = 1020  # Image height. 图像高度。
+IMAGE_WIDTH_PX = 1456   # Image width.  图像宽度。
+IMAGE_HEIGHT_PX = 1088  # Image height. 图像高度。
 
 # UAV altitude above ground level in meters.
 # 无人机离地高度（米）。
