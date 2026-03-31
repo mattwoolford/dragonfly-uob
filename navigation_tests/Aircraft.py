@@ -357,19 +357,6 @@ class Aircraft:
                  / (R * math.cos(math.radians(lat))))
         return lat + math.degrees(d_lat), lon + math.degrees(d_lon)
 
-    # ------------------------------------------
-    # OPERATOR INTERFACE
-    # ------------------------------------------
-
-    @staticmethod
-    def ask_hitl(prompt_text):
-        """
-        Block for a Human-In-The-Loop confirmation at the terminal.
-        Returns True if the operator confirms with 'y', False otherwise.
-        """
-        response = input(f"\n>>> [HITL] {prompt_text} (y/n): ").strip().lower()
-        return response == 'y'
-
     # -----------------------------------------------------------------------
     # 状态机 / State machine
     # -----------------------------------------------------------------------
