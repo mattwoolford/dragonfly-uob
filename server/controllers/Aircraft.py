@@ -1,5 +1,7 @@
 import math
 import time
+from pathlib import Path
+
 from pymavlink import mavutil
 
 from server.controllers.Camera import Camera
@@ -12,11 +14,12 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self, camera=None, camera_image_save_directory=None):
+    def __init__(self, camera=None, camera_image_save_directory=Path(__file__).resolve()):
         self.master = None
         self.connected = False
         self.camera = camera
         self.camera_image_save_directory = camera_image_save_directory
+        self.journey = None
 
     # ------------------------------------------
     # CONNECTION
@@ -37,14 +40,15 @@ class Aircraft:
         print("Heartbeat received.")
         self.connected = True
 
-        print("Requesting telemetry data streams...")
+        print("Requesting telemetry data streams")
         master.mav.request_data_stream_send(
             master.target_system, master.target_component,
             mavutil.mavlink.MAV_DATA_STREAM_POSITION,
             2,  # 2 Hz update rate
-            1   # 1 = start sending
+            1   # 1 = start sending,
         )
         self.master = master
+        print("Connected to aircraft. Ready for commands.")
         return master
 
     # ------------------------------------------
@@ -67,7 +71,6 @@ class Aircraft:
         while time.time() - start_time < timeout_s:
             if self.master.wait_heartbeat(timeout=1) is None:
                 print("WARNING: Heartbeat lost while waiting for arm.")
-                return False
             if self.master.messages['HEARTBEAT'].base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
                 print("Motors armed.")
                 return True
@@ -141,13 +144,9 @@ class Aircraft:
                 print(f"Safety check failed: {reason}")
                 return False
 
-        self.master.mav.command_long_send(
-                self.master.target_system, self.master.target_component,
-                mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
-                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-                4, 0, 0, 0, 0, 0  # 4 = GUIDED
-        )
-        time.sleep(0.3)
+        self.set_mode("GUIDED")
+        self.wait_for_mode("GUIDED")
+        print(f"Navigating to {lat}, {lon} at {alt}m...")
         self.master.mav.set_position_target_global_int_send(
                 0, self.master.target_system, self.master.target_component,
                 mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
@@ -203,7 +202,6 @@ class Aircraft:
         while time.time() - start_time < timeout_s:
             if self.master.wait_heartbeat(timeout=1) is None:
                 print(f"WARNING: Heartbeat lost while waiting for mode {mode_name}.")
-                return False
             if self.master.messages['HEARTBEAT'].custom_mode == target_mode_id:
                 print(f"Mode confirmed: {mode_name}")
                 return True
@@ -264,8 +262,7 @@ class Aircraft:
             yaw_deg
         )
 
-    def check_if_journey_complete(self, target_lat, target_lon, target_alt,
-                                  tolerance_m=2.0):
+    def check_if_journey_complete(self, tolerance_m=2.0):
         """
         Poll GLOBAL_POSITION_INT until within tolerance_m of the target position.
         Returns True on arrival, False on timeout.
@@ -281,8 +278,8 @@ class Aircraft:
         current_lon = msg.lon / 1e7
         current_alt = msg.relative_alt / 1000.0
 
-        h_dist = self.get_distance_metres(current_lat, current_lon, target_lat, target_lon)
-        v_dist = abs(current_alt - target_alt)
+        h_dist = self.get_distance_metres(current_lat, current_lon, self.journey["latitude"], self.journey["longitude"])
+        v_dist = abs(current_alt - self.journey["altitude"])
 
         if h_dist <= tolerance_m and v_dist <= tolerance_m:
             self.journey = None

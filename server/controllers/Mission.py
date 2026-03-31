@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from server.controllers.Aircraft import Aircraft
+from server.mission_modules.Navigation.Navigation import Navigation
+from server.mission_modules.Search.Search import Search
 
 
 class Mission:
@@ -17,6 +19,9 @@ class Mission:
     def __init__(self, aircraft: Aircraft, socketio_instance=None):
         self._assessment_image = None
         self.aircraft = aircraft
+        self.altitude = 50
+        self.complete = False
+        self.route = []
         self.socketio = socketio_instance  # SocketIO instance
         self.set_status("Mission not started") # Initialise the mission status
         self.steps_queue = []  # Steps to be executed (list of methods)
@@ -25,6 +30,25 @@ class Mission:
 
     def add_step(self, next_step: Callable):
         self.steps_queue.append(next_step)
+
+    def _fetch_next_image(self):
+        if len(self.route) == 0:
+            return
+        lat, lon = self.route.pop(0)
+        self._position_aircraft(lat, lon, self.altitude)
+        print("Capturing image...")
+        # TODO: Replace image with camera
+        # image_info = self.aircraft.take_photo_with_position()
+        BASE_DIR = Path(__file__).resolve().parent
+        lat, lon, alt, hdg = self.aircraft.get_position()
+        image_info = {
+            "latitude": lat,
+            "longitude": lon,
+            "relative_altitude_m": alt,
+            "heading": hdg,
+            "path_to_image": f"{BASE_DIR}/../assets/test-image.png",
+        }
+        self.request_image_assessment(image_info["path_to_image"])
 
     def get_image_for_assessment(self):
         return self._assessment_image
@@ -38,7 +62,8 @@ class Mission:
 
         return socketio_instance
 
-    def _send_image_for_assessment(self, file_path):
+    def request_image_assessment(self, file_path):
+        self.suspend = True
         with open(file_path, "rb") as f:
             image_bytes = f.read()
             self._assessment_image = image_bytes
@@ -48,32 +73,63 @@ class Mission:
                 }
             })
 
-    def set_target_coordinates(self, coordinates: tuple[float, float]):
+    def receive_image_assessment(self, u: int | None, v: int | None):
+        if not self.suspend:
+            return
+        if u is None or v is None:
+            print("A target subject could not be found by the user")
+            self.add_step(self._fetch_next_image)
+            self.suspend = False
+            return
+        self.set_target_coordinates(u, v)
+
+    def set_target_coordinates(self, u, v):
+        coordinates = (u, v)
         self.target_coordinates = coordinates
         self.set_status("Target found")
         self._assessment_image = None
-        self.resume()
+        self.suspend = False
         # TODO: Set next step to be geolocation from image
         print(f"Target coordinates set to {coordinates}")
+
+    def _launch_aircraft(self):
+        self.aircraft.set_mode("GUIDED")
+        self.aircraft.wait_for_mode("GUIDED")
+
+        self.set_status("Mission started")
+        time.sleep(2)
+
+        for i in range(5):
+            self.set_status(f"Arming aircraft in {5 - i}s...")
+            print(f"\rArming aircraft in {5 - i}s...", end=("" if i < 4 else "\n"), flush=True)
+            time.sleep(1)
+        self.set_status("Arming aircraft...")
+        print("WARNING! Stand clear. Aircraft arming...")
+        time.sleep(1)
+        self.aircraft.arm()
+
+        self.set_status("Taking off")
+        print("Taking off...")
+        self.aircraft.takeoff(self.altitude, 30)
 
     def next_step(self):
         next = self.steps_queue.pop(0)
         next()
 
-    def resume(self):
-        self.suspend = False
-
-    # TODO: Replace with actual search module
-    def _search(self):
-        # TODO: Replace with image from search
-        self._assessment_image = None
-        self.set_status("Navigating to the search area...")
-        time.sleep(5)
-        self.set_status("Image capture in progress...")
-        time.sleep(5)
-        BASE_DIR = Path(__file__).resolve().parent
-        file_path = f"{BASE_DIR}/../assets/test-image.png"
-        self._send_image_for_assessment(file_path)
+    def _position_aircraft(self, lat, lon, alt):
+        navigation_accepted = self.aircraft.goto(lat, lon, alt)
+        journey_time = 0
+        journey_complete = False
+        while not journey_complete and navigation_accepted:
+            journey_complete = self.aircraft.check_if_journey_complete()
+            time.sleep(1)
+            print(f"\rTravelling to ({lat}, {lon}) [{journey_time}s]",
+                  end=("" if not journey_complete else "\n"),
+                  flush=True)
+            journey_time += 1
+        if not navigation_accepted:
+            raise Exception(f"Could not continue the mission: Navigation to ({lat}, {lon}) at altitude {search_alt}m was out of bounds")
+        print(f"Journey to ({lat}, {lon}) completed in {journey_time}s")
 
     def set_status(self, status: str):
         self.status = status
@@ -94,17 +150,56 @@ class Mission:
         options = options or { }
         self._initiate_sockets(options)
 
-        if not self.aircraft.connected:
-            self.aircraft.connect(os.getenv("AIRCRAFT_CONNECTION_STRING"))
+        try:
+            if not self.aircraft.connected:
+                self.aircraft.connect(os.getenv("AIRCRAFT_CONNECTION_STRING"))
 
-        if not self.aircraft.connected:
-            raise ConnectionError("Could not start mission: Failed to connect to the aircraft")
+            if not self.aircraft.connected:
+                raise ConnectionError("Could not start the mission: Failed to connect to the aircraft")
 
-        # Update mission status to reflect start
-        self.set_status("Mission started")
-        time.sleep(2)
+            # Prepare the mission
 
-        # TODO: Enter search loop
-        # while not self.target_coordinates and not self.suspend:
-        self.add_step(self._search)
-        self.next_step()
+            self.set_status("Preparing search")
+
+            # Check in safe zone before start
+            curr_lat, curr_lon, curr_alt, heading = self.aircraft.get_position()
+            if not Navigation.check_point(curr_lat, curr_lon, self.altitude):
+                raise Exception("Aircraft not in the safe zone")
+
+            # Get search route waypoints
+            search = Search()
+            route = search.start({
+                "mode": "full"
+            })
+
+            route_is_possible = all([Navigation.check_path(lat1, lon1, lat2, lon2, self.altitude) for (lat1, lon1), (lat2, lon2) in zip([(curr_lat, curr_lon), *route], route[1:])])
+
+            if len(route) < 1 or not route_is_possible:
+                raise Exception("Could not start the mission: No route found for searching for the target")
+
+            self.route = route
+
+            self._launch_aircraft()
+            time.sleep(2)
+
+            self.set_status("Searching for the target")
+
+            self.add_step(self._fetch_next_image)
+            while not self.complete:
+                while self.suspend:
+                    time.sleep(0.1)
+                if len(self.steps_queue) > 0:
+                    self.next_step()
+
+
+        except Exception as e:
+            self.set_status("Landing")
+            self.aircraft.land()
+            self.set_status("Mission failed")
+            raise e
+
+
+
+            # while not self.target_coordinates and not self.suspend:
+            # self.add_step(self._search)
+            # self.next_step()

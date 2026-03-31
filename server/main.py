@@ -7,6 +7,7 @@ from flask import Flask
 from dotenv import load_dotenv
 
 from controllers.Mission import Mission
+from server.controllers.Aircraft import Aircraft
 from utils.env_flag import env_flag
 
 for path in sorted(Path(".").glob(".env*")):
@@ -62,25 +63,21 @@ def handle_pixel_coordinates_selection(payload):
         return
     data = payload["data"]
     u, v = data["u"], data["v"]
-    if u is None or v is None:
-        print("A target subject could not be found by the user")
-        mission.resume()
-        return
-    mission.set_target_coordinates((data["u"], data["v"]))
+    mission.receive_image_assessment(u, v)
 
 
 def start_mission() -> None:
     print("Starting mission")
     time.sleep(5)
     global mission
-    mission = Mission(socketio_instance=socketio)
+    aircraft = Aircraft()
+    mission = Mission(aircraft, socketio_instance=socketio)
     print("Mission initialised")
     mission.start()
 
 
 if __name__ == "__main__":
     debug = env_flag("FLASK_DEBUG", default=True)
-    print("OK")
 
     # Flask's debug reloader starts the module twice. Only schedule the
     # background mission from the active reloader process.
