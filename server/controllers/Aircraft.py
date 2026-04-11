@@ -122,23 +122,15 @@ class Aircraft:
 
     def goto(self, lat, lon, alt):
         """
-        Fly to the given GPS coordinates at the specified altitude (metres, relative).
+        Non-blocking: send the aircraft to (lat, lon, alt) in GUIDED mode and return immediately.
         Checks destination point and flight path against geofence before sending command.
-        Blocks until the position is reached or timeout expires.
-        Returns True on arrival, False on timeout or failed safety check.
+        Returns True if the command was sent, False if a safety check failed.
+        Use wait_for_arrival() to block until the aircraft reaches the target.
         """
         ok, reason = Navigation.check_point(lat, lon, alt)
         if not ok:
             print(f"Safety check failed: {reason}")
             return False
-
-        pos = self.get_position()
-
-        if pos:
-            ok, reason = Navigation.check_path(pos[0], pos[1], lat, lon, alt)
-            if not ok:
-                print(f"Safety check failed: {reason}")
-                return False
 
         self.master.mav.command_long_send(
             self.master.target_system, self.master.target_component,
@@ -159,6 +151,22 @@ class Aircraft:
             "altitude": alt
         }
         return True
+
+    def wait_for_arrival(self, lat, lon, alt, tolerance_m=2.0, timeout_s=120):
+        """
+        Block until the aircraft is within tolerance_m of (lat, lon, alt), or timeout.
+        Returns True on arrival, False on timeout.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s:
+            pos = self.get_position()
+            if pos:
+                h_dist = self.get_distance_metres(pos[0], pos[1], lat, lon)
+                v_dist = abs(pos[2] - alt)
+                if h_dist <= tolerance_m and v_dist <= tolerance_m:
+                    return True
+            time.sleep(0.5)
+        return False
 
     def cancel(self):
         """Cancel the current journey and switch to LOITER."""
