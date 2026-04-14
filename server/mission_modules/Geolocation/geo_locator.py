@@ -2,7 +2,7 @@
 # Python 3.10
 
 import math
-from data_models import InputData, GeoResult
+from server.mission_modules.Geolocation.data_models import InputData, GeoResult
 
 
 class GeoLocator:

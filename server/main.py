@@ -1,7 +1,7 @@
 import os
 import time
 
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, join_room
 from pathlib import Path
 from flask import Flask
 from dotenv import load_dotenv
@@ -26,6 +26,12 @@ app.config['SECRET_KEY'] = os.getenv("FLASK_SECRET_KEY")
 
 
 socketio = SocketIO(app, cors_allowed_origins=os.getenv("FLASK_CORS_ALLOWED_ORIGINS").split(','))
+
+
+@socketio.on("connect")
+def handle_connect():
+    join_room("mission-clients")
+    print("Connected client to the mission")
 
 
 @socketio.on('get-assessment-image')
@@ -56,7 +62,7 @@ def get_mission_status() -> dict:
     }
 
 
-@socketio.on('pixel-coordinates-selected')
+@socketio.on('image-inspection-pixel-coordinates-selected')
 def handle_pixel_coordinates_selection(payload):
     global mission
     if mission is None:
