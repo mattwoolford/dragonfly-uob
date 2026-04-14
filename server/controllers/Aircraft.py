@@ -348,7 +348,6 @@ class Aircraft:
         while time.time() - start_time < timeout_s:
             if self.master.wait_heartbeat(timeout=1) is None:
                 print("WARNING: Heartbeat lost while waiting for disarm.")
-                return False
             if not (self.master.messages['HEARTBEAT'].base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):
                 print("Drone has safely auto-disarmed.")
                 return True

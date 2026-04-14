@@ -1,13 +1,13 @@
 from server.interfaces.MissionModule import MissionModule
 
-from config import (
+from server.mission_modules.Geolocation.config import (
     IMAGE_WIDTH_PX,
     IMAGE_HEIGHT_PX,
     ALT_AGL_M,
     GROUND_WIDTH_M,
     GROUND_HEIGHT_M,
 )
-from data_models import (
+from server.mission_modules.Geolocation.data_models import (
     PointData,
     ImageData,
     PositionData,
@@ -16,7 +16,7 @@ from data_models import (
     GroundCoverage,
     InputData,
 )
-from geo_locator import GeoLocator
+from server.mission_modules.Geolocation.geo_locator import GeoLocator
 
 
 class Geolocation(MissionModule):
@@ -44,13 +44,13 @@ class Geolocation(MissionModule):
                 "py": float,
                 "uav_lat_deg": float,
                 "uav_lon_deg": float,
-                "yaw_deg": float
+                "heading": float
             }
         """
         if not isinstance(options, dict):
             raise TypeError("options must be a dict")
 
-        required_keys = ["px", "py", "uav_lat_deg", "uav_lon_deg", "yaw_deg"]
+        required_keys = ["px", "py", "uav_lat_deg", "uav_lon_deg", "heading"]
         missing_keys = [key for key in required_keys if key not in options]
 
         if missing_keys:
@@ -61,7 +61,7 @@ class Geolocation(MissionModule):
             py = float(options["py"])
             uav_lat_deg = float(options["uav_lat_deg"])
             uav_lon_deg = float(options["uav_lon_deg"])
-            yaw_deg = float(options["yaw_deg"])
+            yaw_deg = float(options["heading"])
         except (TypeError, ValueError) as exc:
             raise ValueError("All required options must be numeric") from exc
 
@@ -144,7 +144,7 @@ class Geolocation(MissionModule):
                 "py": float,
                 "uav_lat_deg": float,
                 "uav_lon_deg": float,
-                "yaw_deg": float
+                "heading": float
             }
 
         Returns / 返回：
@@ -152,14 +152,14 @@ class Geolocation(MissionModule):
                 Contains target_lat_deg and target_lon_deg.
                 返回目标点经纬度结果。
         """
-        px, py, uav_lat_deg, uav_lon_deg, yaw_deg = self._validate_and_extract_options(options)
+        px, py, uav_lat_deg, uav_lon_deg, heading = self._validate_and_extract_options(options)
 
         input_data = self._build_input_data(
             px=px,
             py=py,
             uav_lat_deg=uav_lat_deg,
             uav_lon_deg=uav_lon_deg,
-            yaw_deg=yaw_deg,
+            yaw_deg=heading,
         )
 
         return GeoLocator.locate(input_data)
