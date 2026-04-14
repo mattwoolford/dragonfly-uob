@@ -31,7 +31,7 @@ export default function MissionStatusAPIProvider({ children }: PropsWithChildren
 
         socket.on("mission-status-change", (payload: {
             data: {
-                missionStatus: string
+                missionStatus: MissionStatus
             }
         }) => {
             setStatus(payload['data']['missionStatus']);

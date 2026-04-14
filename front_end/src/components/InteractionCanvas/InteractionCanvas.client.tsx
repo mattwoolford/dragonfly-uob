@@ -126,7 +126,6 @@ export default function InteractionCanvas({ onCancel, onImageLoad, onInteraction
     // Handle receiving a request for an interaction
     const handleInteractionPayload: ServerToClientEvents["interaction"] = useCallback((payload: InteractionPayload, ack) => {
         setInteraction(payload.data);
-        console.dir(payload.data);
         setSubmitted(false);
         onInteractionRequest?.();
         pendingAcknowledgementRef.current = ack;

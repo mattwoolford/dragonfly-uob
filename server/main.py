@@ -34,6 +34,17 @@ def handle_connect():
     print("Connected client to the mission")
 
 
+@socketio.on("start-mission")
+def begin_mission():
+    # Flask's debug reloader starts the module twice. Only schedule the
+    # background mission from the active reloader process.
+    is_active_process = not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    if is_active_process:
+        socketio.start_background_task(start_mission)
+    while mission is None or mission.status in ["Mission not started", "Mission complete", "Mission failed"]:
+        continue
+
+
 @socketio.on('get-assessment-image')
 def get_assessment_image():
     global mission
@@ -84,12 +95,6 @@ def start_mission() -> None:
 
 if __name__ == "__main__":
     debug = env_flag("FLASK_DEBUG", default=True)
-
-    # Flask's debug reloader starts the module twice. Only schedule the
-    # background mission from the active reloader process.
-    is_active_process = not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    if is_active_process:
-        socketio.start_background_task(start_mission)
 
     socketio.run(
         app,
