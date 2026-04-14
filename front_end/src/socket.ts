@@ -49,6 +49,7 @@ export interface ClientToServerEvents {
     "get-assessment-image": (cb: (payload: ImagePayload) => void) => void;
     "get-mission-status": (cb: (payload: MissionStatusPayload) => void) => void;
     "image-inspection-pixel-coordinates-selected": (payload: PixelSelectionPayload) => void;
+    "start-mission": () => void;
 }
 
 
