@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from server.controllers.Aircraft import Aircraft
+from server.mission_modules.Delivery.Delivery import Delivery
+from server.mission_modules.Geolocation.Geolocation import Geolocation
 from server.mission_modules.Navigation.Navigation import Navigation
 from server.mission_modules.Search.Search import Search
 
@@ -23,6 +25,7 @@ class Mission:
         self.complete = False
         self.route = []
         self.socketio = socketio_instance  # SocketIO instance
+        self.status = None
         self.set_status("Mission not started") # Initialise the mission status
         self.steps_queue = []  # Steps to be executed (list of methods)
         self.suspend = False # Whether to pause the mission (for example, when waiting for input)
@@ -34,6 +37,7 @@ class Mission:
     def _fetch_next_image(self):
         if len(self.route) == 0:
             return
+        self.set_status("Searching for the target")
         lat, lon = self.route.pop(0)
         self._position_aircraft(lat, lon, self.altitude)
         print("Capturing image...")
@@ -50,8 +54,38 @@ class Mission:
         }
         self.request_image_assessment(image_info["path_to_image"])
 
+
     def get_image_for_assessment(self):
         return self._assessment_image
+
+    def _get_location_from_target_coordinates(self):
+        if self.target_coordinates is None:
+            raise ValueError("Could not get location from target coordinates: Target coordinates have not been set")
+        u, v = self.target_coordinates
+        lat, lon, alt, hdg = self.aircraft.get_position()
+        geolocation = Geolocation()
+        location = geolocation.start({
+            "px":          u,
+            "py":          v,
+            "uav_lat_deg": lat,
+            "uav_lon_deg": lon,
+            "heading":     hdg
+        })
+        return location.target_lat_deg, location.target_lon_deg
+
+    def _deliver_to_target(self):
+        self.set_status("Delivering care kit to the target")
+        delivery = Delivery(self.socketio)
+        lat, lon = self._get_location_from_target_coordinates()
+        delivered = delivery.start({
+            "casualty_lat": lat,
+            "casualty_lon": lon,
+            "aircraft": self.aircraft
+        })
+        if delivered:
+            self.complete = True
+        else:
+            self.aircraft.set_mode("RTL")
 
     def _initiate_sockets(self, options: dict[str, Any] | None = None):
         socketio_instance = options.get("socketio") or self.socketio
@@ -64,6 +98,8 @@ class Mission:
 
     def request_image_assessment(self, file_path):
         self.suspend = True
+        self.set_status("Waiting for image assessment")
+        print("Waiting for image assessment...")
         with open(file_path, "rb") as f:
             image_bytes = f.read()
             self._assessment_image = image_bytes
@@ -71,7 +107,18 @@ class Mission:
                 "data": {
                     "image": image_bytes
                 }
-            })
+            }, to="mission-clients")
+
+    def request_interaction(self, prompt, options: dict[str, Any]):
+        self.suspend = True
+        self.set_status("Waiting for user interaction")
+        print("Waiting for user interaction...")
+        self.socketio.emit("interaction", {
+            "data": {
+                "prompt": prompt,
+                "options": options
+            }
+        }, to="mission-clients")
 
     def receive_image_assessment(self, u: int | None, v: int | None):
         if not self.suspend:
@@ -89,8 +136,8 @@ class Mission:
         self.set_status("Target found")
         self._assessment_image = None
         self.suspend = False
-        # TODO: Set next step to be geolocation from image
         print(f"Target coordinates set to {coordinates}")
+        self.add_step(self._deliver_to_target)
 
     def _launch_aircraft(self):
         self.aircraft.set_mode("GUIDED")
@@ -99,22 +146,28 @@ class Mission:
         self.set_status("Mission started")
         time.sleep(2)
 
-        for i in range(5):
-            self.set_status(f"Arming aircraft in {5 - i}s...")
-            print(f"\rArming aircraft in {5 - i}s...", end=("" if i < 4 else "\n"), flush=True)
+        lat, lon, alt, hdg = self.aircraft.get_position()
+        if alt < 5:
+            for i in range(5):
+                self.set_status(f"Arming aircraft in {5 - i}s...")
+                print(f"\rArming aircraft in {5 - i}s...", end=("" if i < 4 else "\n"), flush=True)
+                time.sleep(1)
+            self.set_status("Arming aircraft")
+            print("WARNING! Stand clear. Aircraft arming...")
             time.sleep(1)
-        self.set_status("Arming aircraft...")
-        print("WARNING! Stand clear. Aircraft arming...")
-        time.sleep(1)
-        self.aircraft.arm()
+            if not self.aircraft.arm():
+                raise Exception("Could not arm the aircraft")
+        else:
+            print("Aircraft is airborne")
 
         self.set_status("Taking off")
         print("Taking off...")
-        self.aircraft.takeoff(self.altitude, 30)
+        if not self.aircraft.takeoff(self.altitude, 30):
+            raise Exception("Aircraft could not take off")
 
     def next_step(self):
-        next = self.steps_queue.pop(0)
-        next()
+        next_step_in_queue = self.steps_queue.pop(0)
+        next_step_in_queue()
 
     def _position_aircraft(self, lat, lon, alt):
         navigation_accepted = self.aircraft.goto(lat, lon, alt)
@@ -137,7 +190,7 @@ class Mission:
             "data": {
                 "missionStatus": status
             }
-        })
+        }, to="mission-clients")
 
     def start(self, options: dict[str, Any] | None = None):
         """
@@ -182,14 +235,13 @@ class Mission:
             self._launch_aircraft()
             time.sleep(2)
 
-            self.set_status("Searching for the target")
-
             self.add_step(self._fetch_next_image)
             while not self.complete:
-                while self.suspend:
-                    time.sleep(0.1)
+                if self.suspend:
+                    continue
                 if len(self.steps_queue) > 0:
                     self.next_step()
+            self.set_status("Mission complete")
 
 
         except Exception as e:

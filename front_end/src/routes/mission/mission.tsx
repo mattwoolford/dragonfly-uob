@@ -1,19 +1,19 @@
 import './mission.css';
-import KeyboardEffect   from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
-import LoadingIcon      from "@components/LoadingIcon/LoadingIcon.tsx";
-import ContentContainer from "@components/ContentContainer/ContentContainer.tsx";
+import KeyboardEffect    from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
+import LoadingIcon       from "@components/LoadingIcon/LoadingIcon.tsx";
+import ContentContainer  from "@components/ContentContainer/ContentContainer.tsx";
 import {
     LayoutGroup,
     motion
-}                       from "motion/react";
-import Console          from "@components/Console/Console.tsx";
-import Map              from "@components/Map/Map.client.tsx";
-import ImageCanvas      from "@components/ImageCanvas/ImageCanvas.client.tsx";
+}                        from "motion/react";
+import Console           from "@components/Console/Console.tsx";
+import Map               from "@components/Map/Map.client.tsx";
+import InteractionCanvas from "@components/InteractionCanvas/InteractionCanvas.client.tsx";
 import {
     useCallback,
     useState
-}                       from "react";
-import clsx             from "clsx";
+}                        from "react";
+import clsx              from "clsx";
 
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -38,22 +38,22 @@ export default function Mission() {
 
     const DEFAULT_LOCATION_PIN = [51.423967391658536, -2.67169820644399] satisfies [number, number];
 
-    const [maximiseImage, setMaximiseImage] = useState<boolean>(false);
+    const [maximiseInteraction, setMaximiseInteraction] = useState<boolean>(false);
 
-    const handleImageLoad = useCallback(() => {
-        setMaximiseImage(true);
+    const handleInteraction = useCallback(() => {
+        setMaximiseInteraction(true);
     }, []);
 
-    const handleEndImageAssessment = useCallback(async (_u?: number, _v?: number) => {
+    const handleEndInteraction = useCallback(async () => {
         await new Promise<void>(resolve => setTimeout(() => {
-            setMaximiseImage(false);
+            setMaximiseInteraction(false);
             resolve();
         }, 500));
     }, []);
 
     const imageContainerCx = clsx(
-        !maximiseImage && "pointer-events-none",
-        maximiseImage && "pointer-events-auto"
+        !maximiseInteraction && "pointer-events-none",
+        maximiseInteraction && "pointer-events-auto"
     );
 
     return (
@@ -66,8 +66,12 @@ export default function Mission() {
                     <ContentContainer>
                         <Map pin={ DEFAULT_LOCATION_PIN } />
                     </ContentContainer>
-                    <ContentContainer className={imageContainerCx} maximise={maximiseImage}>
-                        <ImageCanvas onImageLoad={handleImageLoad} onPixelSelection={handleEndImageAssessment} onCancel={handleEndImageAssessment} />
+                    <ContentContainer className={imageContainerCx} maximise={maximiseInteraction}>
+                        <InteractionCanvas onImageLoad={handleInteraction}
+                                           onInteractionRequest={handleInteraction}
+                                           onPixelSelection={handleEndInteraction}
+                                           onInteractionSelection={handleEndInteraction}
+                                           onCancel={handleEndInteraction} />
                     </ContentContainer>
                     <Console />
                 </LayoutGroup>
