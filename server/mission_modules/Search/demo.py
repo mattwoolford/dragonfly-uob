@@ -8,8 +8,8 @@ Polygon = List[Point]
 # ============================================================
 
 # Rectangle (cell) size: 40m wide (x), 30m tall (y)
-CELL_W = 36.0
-CELL_H = 32.0
+CELL_W = 30.0
+CELL_H = 25.0
 HALF_W = CELL_W / 2.0
 HALF_H = CELL_H / 2.0
 
