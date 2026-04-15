@@ -18,7 +18,7 @@ class Aircraft:
         self.master = None
         self.connected = False
         self.camera = camera
-        self.camera_image_save_directory = camera_image_save_directory
+        self.camera_image_save_directory = camera_image_save_directory + "../assets"
         self.journey = None
 
     # ------------------------------------------
@@ -262,7 +262,7 @@ class Aircraft:
             yaw_deg
         )
 
-    def check_if_journey_complete(self, tolerance_m=2.0):
+    def check_if_journey_complete(self, tolerance_m=5.0):
         """
         Poll GLOBAL_POSITION_INT until within tolerance_m of the target position.
         Returns True on arrival, False on timeout.

@@ -179,7 +179,6 @@ class Mission:
         journey_complete = False
         while not journey_complete and navigation_accepted:
             journey_complete = self.aircraft.check_if_journey_complete()
-            time.sleep(1)
             print(f"\rTravelling to ({lat}, {lon}) [{journey_time}s]",
                   end=("" if not journey_complete else "\n"),
                   flush=True)
