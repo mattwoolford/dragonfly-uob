@@ -1,28 +1,28 @@
 import {
     type MouseEventHandler,
-    use,
     useCallback,
     useEffect,
     useRef,
     useState
-}                                               from "react";
+}                             from "react";
 import {
     AnimatePresence,
     LayoutGroup,
     motion
-}                                               from "motion/react";
+}                             from "motion/react";
 import socket, {
     DEFAULT_TIMEOUT,
     type ImagePayload,
     type Interaction,
     type InteractionOption,
     type InteractionPayload,
+    type MissionStatusPayload,
     type ServerToClientEvents
-}                                               from "../../socket";
-import Logo                                     from "@assets/logo/png/DragonFly Logo_Emblem.png";
-import Button                                   from "@components/Button/Button.tsx";
-import KeyboardEffect                           from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
-import MissionStatusAPI, { type MissionStatus } from "@utils/contexts/MissionStatusAPI.ts";
+}                             from "../../socket";
+import Logo                   from "@assets/logo/png/DragonFly Logo_Emblem.png";
+import Button                 from "@components/Button/Button.tsx";
+import KeyboardEffect         from "@utils/components/KeyboardEffect/KeyboardEffect.tsx";
+import { type MissionStatus } from "@utils/contexts/MissionStatusAPI.ts";
 
 
 interface InteractionCanvasProps {
@@ -64,7 +64,7 @@ export default function InteractionCanvas({ onCancel, onImageLoad, onInteraction
 
 
     // Context
-    const missionStatus = use(MissionStatusAPI);
+    const [missionStatus, setMissionStatus] = useState<MissionStatus>("Mission not started");
     const FLASH_MISSION_STATUSES: MissionStatus[] = ["Arming aircraft", "Taking off", "Searching for the target", "Mission failed"];
     const shouldBlinkMissionStatus = !!missionStatus && FLASH_MISSION_STATUSES.includes(missionStatus);
 
@@ -79,6 +79,12 @@ export default function InteractionCanvas({ onCancel, onImageLoad, onInteraction
 
 
     // Callbacks
+    // Handle mission status change
+    const handleMissionStatusChange = (payload: MissionStatusPayload) => {
+        console.dir(payload);
+        setMissionStatus(payload.data.missionStatus);
+    };
+
     // Handle user selecting an option from an interaction
     const handleInteractionSelection = (id: string) => {
         setSelectedInteractionOptionID(id);
@@ -199,10 +205,12 @@ export default function InteractionCanvas({ onCancel, onImageLoad, onInteraction
             }
         });
 
+        socket.on("mission-status-change", handleMissionStatusChange);
         socket.on("image-inspection", handleImagePayload);
         socket.on("interaction", handleInteractionPayload);
 
         return () => {
+            socket.off("mission-status-change");
             socket.off("image-inspection");
             socket.off("interaction");
             pendingAcknowledgementRef.current = null;

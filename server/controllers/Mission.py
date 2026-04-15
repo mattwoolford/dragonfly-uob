@@ -23,6 +23,7 @@ class Mission:
         self.aircraft = aircraft
         self.altitude = 50
         self.complete = False
+        self.home = None
         self.route = []
         self.socketio = socketio_instance  # SocketIO instance
         self.status = None
@@ -41,17 +42,16 @@ class Mission:
         lat, lon = self.route.pop(0)
         self._position_aircraft(lat, lon, self.altitude)
         print("Capturing image...")
-        # TODO: Replace image with camera
-        # image_info = self.aircraft.take_photo_with_position()
-        BASE_DIR = Path(__file__).resolve().parent
-        lat, lon, alt, hdg = self.aircraft.get_position()
-        image_info = {
-            "latitude": lat,
-            "longitude": lon,
-            "relative_altitude_m": alt,
-            "heading": hdg,
-            "path_to_image": f"{BASE_DIR}/../assets/test-image.png",
-        }
+        image_info = self.aircraft.take_photo_with_position()
+        # BASE_DIR = Path(__file__).resolve().parent
+        # lat, lon, alt, hdg = self.aircraft.get_position()
+        # image_info = {
+        #     "latitude": lat,
+        #     "longitude": lon,
+        #     "relative_altitude_m": alt,
+        #     "heading": hdg,
+        #     "path_to_image": f"{BASE_DIR}/../assets/test-image.png",
+        # }
         self.request_image_assessment(image_info["path_to_image"])
 
 
@@ -80,7 +80,10 @@ class Mission:
         delivered = delivery.start({
             "casualty_lat": lat,
             "casualty_lon": lon,
-            "aircraft": self.aircraft
+            "aircraft": self.aircraft,
+            "home_lat": self.home[0],
+            "home_lon": self.home[1]
+
         })
         if delivered:
             self.complete = True
@@ -142,6 +145,7 @@ class Mission:
     def _launch_aircraft(self):
         self.aircraft.set_mode("GUIDED")
         self.aircraft.wait_for_mode("GUIDED")
+        self.home = self.aircraft.get_position()
 
         self.set_status("Mission started")
         time.sleep(2)
@@ -245,8 +249,7 @@ class Mission:
 
 
         except Exception as e:
-            self.set_status("Landing")
-            self.aircraft.land()
+            self.aircraft.set_mode("LOITER")
             self.set_status("Mission failed")
             raise e
 
