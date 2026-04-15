@@ -27,7 +27,12 @@ class Delivery(MissionModule):
         CASUALTY_LAT = options.get('casualty_lat', 51.4235372)
         CASUALTY_LON = options.get('casualty_lon', -2.6702034)
         SERVO_CHAN    = options.get('servo_chan', 14)  # Aux Out 6
+
         aircraft = options.get('aircraft', Aircraft())
+        curr_pos = aircraft.get_position()
+        print(options)
+        HOME_LAT = options.get('home_lat', curr_pos[0] if curr_pos else 51.4235372)
+        HOME_LON = options.get('home_lon', curr_pos[1] if curr_pos else -2.6702034)
 
         # --- CONNECT ---
         if not aircraft.connected:
@@ -37,12 +42,6 @@ class Delivery(MissionModule):
         aircraft.set_servo(SERVO_CHAN, 1100)
 
         # --- PRE-FLIGHT ---
-        print("\n--- PRE-FLIGHT ---")
-        pos = aircraft.get_position()
-        if not pos:
-            print("CRITICAL: Could not get home position. Aborting.")
-            return False
-        HOME_LAT, HOME_LON, _, _ = pos
         print(f"Home position locked: {HOME_LAT}, {HOME_LON}")
 
         aircraft.set_mode("GUIDED")
@@ -179,9 +178,13 @@ class Delivery(MissionModule):
         # --- RETURN TO LAUNCH ---
         print("Delivery confirmed. Ascending to cruise altitude...")
         aircraft.goto(offset_lat, offset_lon, 20)
+        while not aircraft.check_if_journey_complete():
+            continue
 
         print("\n--- INITIATING RETURN TO LAUNCH ---")
         aircraft.goto(HOME_LAT, HOME_LON, 20)
+        while not aircraft.check_if_journey_complete():
+            continue
 
         print("Arrived at home. Landing...")
         if not aircraft.land(timeout_s=120):

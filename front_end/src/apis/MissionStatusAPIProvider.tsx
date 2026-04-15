@@ -29,11 +29,8 @@ export default function MissionStatusAPIProvider({ children }: PropsWithChildren
             }
         });
 
-        socket.on("mission-status-change", (payload: {
-            data: {
-                missionStatus: MissionStatus
-            }
-        }) => {
+        socket.on("mission-status-change", (payload) => {
+            console.log("MSC");
             setStatus(payload['data']['missionStatus']);
         });
 
