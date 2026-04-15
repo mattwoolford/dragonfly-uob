@@ -10,6 +10,7 @@ from server.mission_modules.Delivery.Delivery import Delivery
 from server.mission_modules.Geolocation.Geolocation import Geolocation
 from server.mission_modules.Navigation.Navigation import Navigation
 from server.mission_modules.Search.Search import Search
+from server.utils.env_flag import env_flag
 
 
 class Mission:
@@ -42,16 +43,18 @@ class Mission:
         lat, lon = self.route.pop(0)
         self._position_aircraft(lat, lon, self.altitude)
         print("Capturing image...")
-        image_info = self.aircraft.take_photo_with_position()
-        # BASE_DIR = Path(__file__).resolve().parent
-        # lat, lon, alt, hdg = self.aircraft.get_position()
-        # image_info = {
-        #     "latitude": lat,
-        #     "longitude": lon,
-        #     "relative_altitude_m": alt,
-        #     "heading": hdg,
-        #     "path_to_image": f"{BASE_DIR}/../assets/test-image.png",
-        # }
+        if env_flag("TEST", default=True):
+            BASE_DIR = Path(__file__).resolve().parent
+            lat, lon, alt, hdg = self.aircraft.get_position()
+            image_info = {
+                "latitude": lat,
+                "longitude": lon,
+                "relative_altitude_m": alt,
+                "heading": hdg,
+                "path_to_image": f"{BASE_DIR}/../assets/test-image.png",
+            }
+        else:
+            image_info = self.aircraft.take_photo_with_position()
         self.request_image_assessment(image_info["path_to_image"])
 
 
