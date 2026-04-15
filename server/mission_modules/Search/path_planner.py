@@ -134,51 +134,52 @@ def choose_rightmost_bottom_cell(good_cells: List[Cell]) -> Cell:
     return max(good_cells, key=lambda c: (c[0], -c[1]))
 
 
-def quantize_column(x: float) -> int:
+def quantize_row(y: float) -> int:
     """
-    Convert a cell center x into a logical column index.
-    This keeps the logic synchronized with current CELL_W.
+    Convert a cell center y into a logical row index.
+    This keeps the logic synchronized with current CELL_H.
     """
-    return int(round(x / CELL_W))
+    return int(round(y / CELL_H))
 
 
 def build_vertical_snake_route(good_cells: List[Cell]) -> Tuple[List[Cell], Optional[Cell]]:
     """
-    Build the good main route using the current rule:
+    Build the good main route using the new rule:
 
-    - start from the rightmost-bottom good cell
-    - group cells by column
-    - visit columns from right to left
-    - first column:  bottom -> top
-    - second column: top -> bottom
-    - third column:  bottom -> top
+    - group cells by row
+    - visit rows from top to bottom
+    - first row:  right -> left
+    - second row: left -> right
+    - third row:  right -> left
     - ...
 
-    This guarantees all good cells are included.
+    This creates a horizontal zigzag route from top to bottom,
+    starting from the top-right cell.
     """
     if not good_cells:
         return [], None
 
-    columns: Dict[int, List[Cell]] = {}
+    rows: Dict[int, List[Cell]] = {}
     for cell in good_cells:
         cx, cy, ix, iy = cell
-        col_id = quantize_column(cx)
-        if col_id not in columns:
-            columns[col_id] = []
-        columns[col_id].append(cell)
+        row_id = quantize_row(cy)
+        if row_id not in rows:
+            rows[row_id] = []
+        rows[row_id].append(cell)
 
-    sorted_col_ids = sorted(columns.keys(), reverse=True)
+    # top -> bottom
+    sorted_row_ids = sorted(rows.keys(), reverse=True)
 
     ordered: List[Cell] = []
 
-    for i, col_id in enumerate(sorted_col_ids):
-        col_cells = columns[col_id]
-        col_cells_sorted = sorted(col_cells, key=lambda c: c[1])  # bottom -> top
+    for i, row_id in enumerate(sorted_row_ids):
+        row_cells = rows[row_id]
+        row_cells_sorted = sorted(row_cells, key=lambda c: c[0])  # left -> right
 
         if i % 2 == 0:
-            ordered.extend(col_cells_sorted)
+            ordered.extend(reversed(row_cells_sorted))   # right -> left
         else:
-            ordered.extend(reversed(col_cells_sorted))
+            ordered.extend(row_cells_sorted)             # left -> right
 
     start_cell = ordered[0]
     return ordered, start_cell
