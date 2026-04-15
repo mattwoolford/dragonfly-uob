@@ -14,11 +14,11 @@ class Aircraft:
     Call Aircraft.connect() to get an instance before using any methods.
     """
 
-    def __init__(self, camera=None, camera_image_save_directory=Path(__file__).resolve()):
+    def __init__(self, camera=None, camera_image_save_directory=(Path(__file__).resolve().parent / "../assets").resolve()):
         self.master = None
         self.connected = False
         self.camera = camera
-        self.camera_image_save_directory = camera_image_save_directory + "../assets"
+        self.camera_image_save_directory = camera_image_save_directory
         self.journey = None
 
     # ------------------------------------------
