@@ -1,0 +1,249 @@
+@startuml
+
+header Matt Woolford
+footer Matt Woolford
+
+title Sequence diagram of system as flown on Demo Day
+
+actor User
+boundary "Web UI" as Web
+boundary "Mission Server" as Server
+control Mission
+entity "Steps Queue" as q
+entity Search
+entity Geolocation
+entity Delivery
+control Aircraft
+entity Camera
+entity Navigation
+participant Drone
+
+autonumber
+
+activate User
+activate Web
+activate Drone
+
+[o-> Server: Start server
+activate Server
+create Mission
+Server -> Mission: <<create>>
+
+... Wait for client ...
+
+User -> Web : Loads the website dashboard UI
+Web -> Server : Connect to web socket session
+Server -->> Web : Confirm connection
+loop Background: Listen for mission status updates
+    Server -> Web: Mission status update
+    Web -> User: Display mission status update
+end
+group Mission
+    User -> Web: Starts mission
+    Web -> Server: Start mission
+    Server -> Mission: Start program
+    activate Mission
+    create q
+    Mission -> q: <<create>>
+    create Aircraft
+    Mission -> Aircraft: <<create>>
+    Mission -> Aircraft: Connect
+    activate Aircraft
+    Aircraft -> Drone: Connect
+    alt Does not receive heartbeat
+        Aircraft -> Mission: Failed to connect
+        Mission --x Aircraft: <<destroy>>
+        Mission --> Server: Mission failed
+        Server -> Aircraft: Failsafe: Set LOITER mode
+        Aircraft -> Drone: <<set>> LOITER
+        Server -x Aircraft: <<destroy>>
+    else Receives heartbeat
+        Drone --> Aircraft: Heartbeat
+        Aircraft -> Mission: Connected
+        create Search
+        Mission -> Search: <<create>>
+        Mission -> Search: Get mission waypoints
+        activate Search
+        Search --> Mission: Waypoints
+        destroy Search
+        ... Wait 5 seconds for arm warning ...
+        Mission -> Aircraft: Arm aircraft
+        Aircraft -> Drone: Arm
+        alt Aircraft did not respond to arm command
+            Aircraft -> Mission: Failed to arm
+            Mission --x Aircraft: <<destroy>>
+            Mission --> Server: Mission failed
+        else Aircraft arms successfully
+            Drone --> Aircraft: Armed
+            Aircraft --> Mission: Aircraft armed
+            Mission -> Aircraft: Takeoff to 50m
+            create Navigation
+            Aircraft -> Navigation: <<create>>
+            Aircraft -> Drone: <<set>> TAKEOFF
+            destroy Navigation
+            loop while Drone has not reached target altitude
+                Mission -> Aircraft: Query if Drone reached altitude
+                Aircraft -> Drone: Get position
+                Drone --> Aircraft: Position
+                Aircraft --> Mission: Whether Drone has reached altitude
+            end
+            Mission -> Aircraft: Set GUIDED mode
+            Aircraft -> Drone: <<set>> GUIDED
+            loop while steps are in the "Steps Queue"
+                Mission -> q: Get and remove next step
+                activate q
+                q --> Mission: Next step
+                deactivate q
+            end
+            loop for each mission waypoint or until subject found
+                Mission -> q: Search at next waypoint
+                activate q
+            end
+            group Search for the subject
+                Mission -> Aircraft: Go to next waypoint
+                create Navigation
+                Aircraft -> Navigation: <<create>>
+                Aircraft -> Drone: Go to waypoint
+                destroy Navigation
+                loop while Drone has not arrived at the waypoint
+                    Mission -> Aircraft: Query if Drone arrived at the waypoint
+                    Aircraft -> Drone: Get position
+                    Drone --> Aircraft: Position
+                    Aircraft --> Mission: Whether Drone has arrived at the waypoint
+                end
+                Mission -> Aircraft: Take a photo of the ground
+                create Camera
+                Aircraft -> Camera: <<create>>
+                Aircraft -> Camera: Take photo
+                activate Camera
+                Camera --> Aircraft: Photo
+                destroy Camera
+                Aircraft --> Mission: Photo taken
+                Mission -> Server: Request for interaction
+                Server -> Web: Photo requesting coordinates
+                Web -> User: Request image coordinates
+                alt Subject has been found
+                    User --> Web: Click location in image
+                    Web --> Server: Send image coordinates
+                    Server --> Mission: Image coordinates
+                    create Geolocation
+                    Mission -> Geolocation: <<create>>
+                    Mission -> Geolocation: Get geographic coordinates from image coordinates
+                    activate Geolocation
+                    Geolocation --> Mission: Geographic coordinates
+                    destroy Geolocation
+                    Mission -> q: Deliver to the subject
+                else Subject was not found
+                    User --> Web: No subject found
+                end
+            end
+            group Deliver to the subject
+                create Delivery
+                Mission -> Delivery: <<create>>
+                Delivery -> Aircraft: Go to subject location
+                activate Delivery
+                create Navigation
+                Aircraft -> Navigation: <<create>>
+                Aircraft -> Drone: Go to subject location waypoint
+                destroy Navigation
+                loop while Drone has not arrived at the waypoint
+                    Delivery -> Aircraft: Query if Drone arrived at the waypoint
+                    Aircraft -> Drone: Get position
+                    Drone --> Aircraft: Position
+                    Aircraft --> Delivery: Whether Drone has arrived at the waypoint
+                end
+                Delivery -> Aircraft: Side-step 7.5m and descend to 20m
+                create Navigation
+                Aircraft -> Navigation: <<create>>
+                Aircraft -> Drone: Go to side-stepped waypoint
+                destroy Navigation
+                loop while Drone has not arrived at the waypoint
+                    Delivery -> Aircraft: Query if Drone arrived at the waypoint
+                    Aircraft -> Drone: Get position
+                    Drone --> Aircraft: Position
+                    Aircraft --> Delivery: Whether Drone has arrived at the waypoint
+                end
+                loop up to 3 times if user does not permit landing
+                    create Navigation
+                    Aircraft -> Navigation: <<create>>
+                    Delivery -> Aircraft: Descend to 10m
+                    destroy Navigation
+                    loop while Drone has not reached target altitude
+                        Mission -> Aircraft: Query if Drone reached altitude
+                        Aircraft -> Drone: Get position
+                        Drone --> Aircraft: Position
+                        Aircraft --> Mission: Whether Drone has reached altitude
+                    end
+                    Delivery -> Server: Request permission to land
+                    Server -> Web: Send interaction request
+                    Web -> User: Request permission to land
+                end
+                alt User does not permit landing
+                    User --> Server: Landing not permitted
+                    Server --> Delivery: Landing not permitted
+                    Delivery -> Mission: Failed to deliver
+                    Mission --x Delivery: <<destroy>>
+                    Mission --x Aircraft: <<destroy>>
+                    Mission --> Server: Mission failed
+                else User permits landing
+                    User --> Server: Landing authorised
+                    Server --> Delivery: Landing authorised
+                    Delivery -> Aircraft: Land
+                    Aircraft -> Drone: Land
+                    ... Wait for aircraft to disarm ...
+                    loop up to 3 times if delivery unsuccessful
+                        Delivery -> Aircraft: Release payload (stage 1)
+                        Aircraft -> Drone: Move payload servo
+                        ... Actuation delay ...
+                        Delivery -> Aircraft: Release payload (stage 2)
+                        Aircraft -> Drone: Move payload servo
+                        ... Actuation delay ...
+                        Delivery -> Server: Request confirmation of successful delivery
+                        Server -> Web: Send interaction request
+                        Web -> User: Request confirmation of successful delivery
+                    end
+                    Delivery -> Aircraft: Arm drone
+                    Aircraft -> Drone: Arm
+                    alt Aircraft did not respond to arm command
+                        Aircraft -> Delivery: Failed to arm
+                        Delivery -> Mission: Failed to arm drone
+                        Mission --x Delivery: <<destroy>>
+                        Mission --x Aircraft: <<destroy>>
+                        Mission --> Server: Mission failed
+                    else Aircraft arms successfully
+                        Drone --> Aircraft: Armed
+                        Mission -> Aircraft: Takeoff to 50m
+                        create Navigation
+                        Aircraft -> Navigation: <<create>>
+                        Aircraft -> Drone: <<set>> TAKEOFF
+                        destroy Navigation
+                        loop while Drone has not reached target altitude
+                            Mission -> Aircraft: Query if Drone reached altitude
+                            Aircraft -> Drone: Get position
+                            Drone --> Aircraft: Position
+                            Aircraft --> Mission: Whether Drone has reached altitude
+                        end
+                        alt Successful delivery had been confirmed
+                            Delivery -> Mission: Success
+                            Mission -> Server: Mission Success
+                        else Successful delivery had not been confirmed
+                            Delivery -> Mission: Failed
+                            Mission -> Server: Mission failed
+                        end
+                        destroy Delivery
+                        destroy Aircraft
+                        destroy q
+                        destroy Mission
+                    end
+                end
+            end
+            deactivate q
+        end
+    end
+end
+
+deactivate Mission
+deactivate Drone
+
+
+@enduml
