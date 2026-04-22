@@ -1,0 +1,9 @@
+@layer components {
+
+    .ContentContainer {
+
+        @apply flex grow items-center relative justify-center min-h-100 rounded-2xl shadow-2xl bg-content-background/20 backdrop-blur-2xl;
+
+    }
+
+}

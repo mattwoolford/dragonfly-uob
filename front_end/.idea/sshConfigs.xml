@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="dragonfly.local" id="af6b92a9-b36d-45b7-b297-02172006b586" port="22" nameFormat="DESCRIPTIVE" username="flightlab-user" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>
