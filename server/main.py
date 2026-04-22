@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from controllers.Mission import Mission
 from server.controllers.Aircraft import Aircraft
+from server.controllers.Camera import Camera
 from utils.env_flag import env_flag
 
 for path in sorted(Path(".").glob(".env*")):
@@ -83,7 +84,8 @@ def start_mission() -> None:
     print("Starting mission")
     time.sleep(5)
     global mission
-    aircraft = Aircraft()
+    camera = Camera()
+    aircraft = Aircraft(camera=camera)
     mission = Mission(aircraft, socketio_instance=socketio)
     print("Mission initialised")
     mission.start()

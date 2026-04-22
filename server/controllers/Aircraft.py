@@ -324,8 +324,7 @@ class Aircraft:
 
         lat, lon, rel_alt, heading = position
 
-        camera_helper = Camera()
-        path_to_image = camera_helper.capture_and_save_image(
+        path_to_image = self.camera.capture_and_save_image(
             camera=self.camera,
             save_dir_path=self.camera_image_save_directory
         )
