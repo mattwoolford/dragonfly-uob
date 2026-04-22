@@ -52,11 +52,10 @@ group Mission
     Aircraft -> Drone: Connect
     alt Does not receive heartbeat
         Aircraft -> Mission: Failed to connect
-        Mission --x Aircraft: <<destroy>>
         Mission --> Server: Mission failed
         Server -> Aircraft: Failsafe: Set LOITER mode
         Aircraft -> Drone: <<set>> LOITER
-        Server -x Aircraft: <<destroy>>
+        Mission --x Aircraft: <<destroy>>
     else Receives heartbeat
         Drone --> Aircraft: Heartbeat
         Aircraft -> Mission: Connected
